@@ -477,7 +477,7 @@ class AgenticV3Controller(BaseController):
             # 从请求或环境变量获取配置
             api_key = llm_config.get("api_key") or os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
             base_url = llm_config.get("base_url") or os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-            model = llm_config.get("model") or os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+            model = llm_config.get("model") or os.getenv("LLM_MODEL", "qwen/qwen3-235b-a22b-2507")
             
             if not api_key:
                 raise ValueError("缺少 LLM API Key，请在 llm_config.api_key 中提供或设置环境变量 OPENROUTER_API_KEY/OPENAI_API_KEY")

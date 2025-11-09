@@ -251,8 +251,11 @@ class ChatModeConfig:
     不建议在配置中硬编码。路径会在 ChatSession 初始化时根据运行时参数动态确定。
     """
 
+    # API 配置
+    api_base_url: Optional[str] = None  # V3 API 基础 URL（从环境变量读取）
+
     # 对话历史配置
-    conversation_history_size: int = 5  # 保留最近 N 轮对话
+    conversation_history_size: int = 10  # 保留最近 N 轮对话
 
     # 记忆检索配置
     top_k_memories: int = 20  # 每次检索 N 条记忆
@@ -298,6 +301,10 @@ class ChatModeConfig:
 
     def __post_init__(self):
         """初始化配置，确保目录存在"""
+        # 从环境变量加载 API 配置
+        if self.api_base_url is None:
+            self.api_base_url = os.getenv("API_BASE_URL", "http://localhost:8001")
+        
         # 确保对话历史目录存在
         self.chat_history_dir.mkdir(parents=True, exist_ok=True)
         # memcell_output_dir 不在这里调整，由 ChatSession 根据运行时参数动态确定
