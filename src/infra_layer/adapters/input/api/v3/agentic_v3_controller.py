@@ -31,6 +31,8 @@ from infra_layer.adapters.out.persistence.document.memory.conversation_meta impo
 from infra_layer.adapters.out.persistence.repository.conversation_meta_raw_repository import (
     ConversationMetaRawRepository,
 )
+from component.redis_provider import RedisProvider
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,8 @@ class AgenticV3Controller(BaseController):
         )
         self.memory_manager = MemoryManager()
         self.conversation_meta_repository = conversation_meta_repository
+        # 获取 RedisProvider
+        self.redis_provider = get_bean_by_type(RedisProvider)
         logger.info("AgenticV3Controller initialized with MemoryManager and ConversationMetaRepository")
 
     @post(
@@ -179,22 +183,33 @@ class AgenticV3Controller(BaseController):
             message_data = await fastapi_request.json()
             logger.info("收到 V3 memorize 请求（单条消息）")
 
-            # 2. 使用 group_chat_converter 转换为内部格式
+            # 2. 保存原始消息到 Redis（用于历史累积）
+            group_id = message_data.get("group_id")
+            if group_id:
+                redis_key = f"chat_history:{group_id}"
+
+                # 将消息保存到 Redis List（左侧推入，保持时间顺序）
+                await self.redis_provider.lpush(redis_key, json.dumps(message_data))
+                # 设置过期时间为 24 小时
+                await self.redis_provider.expire(redis_key, 86400)
+                logger.debug("消息已保存到 Redis: group_id=%s", group_id)
+        
+
+            # 3. 使用 group_chat_converter 转换为内部格式
             logger.info("开始转换简单消息格式到内部格式")
             memorize_input = convert_simple_message_to_memorize_input(message_data)
 
             # 提取元信息用于日志
-            group_id = memorize_input.get("group_id")
             group_name = memorize_input.get("group_name")
 
             logger.info("转换完成: group_id=%s, group_name=%s", group_id, group_name)
 
-            # 3. 转换为 MemorizeRequest 对象并调用 memory_manager
+            # 4. 转换为 MemorizeRequest 对象并调用 memory_manager
             logger.info("开始处理记忆请求")
             memorize_request = await _handle_conversation_format(memorize_input)
             memories = await self.memory_manager.memorize(memorize_request)
 
-            # 4. 返回统一格式的响应
+            # 5. 返回统一格式的响应
             memory_count = len(memories) if memories else 0
             logger.info("处理记忆请求完成，保存了 %s 条记忆", memory_count)
 
@@ -237,7 +252,8 @@ class AgenticV3Controller(BaseController):
           "time_range_days": 365,
           "top_k": 20,
           "retrieval_mode": "rrf",
-          "data_source": "memcell"
+          "data_source": "memcell",
+          "memory_scope": "all"
         }
         ```
         
@@ -254,6 +270,11 @@ class AgenticV3Controller(BaseController):
         - **data_source** (可选): 数据源
           * "memcell": 从 MemCell.episode 检索（默认）
           * "event_log": 从 event_log.atomic_fact 检索
+          * "semantic_memory": 从语义记忆检索
+        - **memory_scope** (可选): 记忆范围
+          * "all": 所有记忆（默认，包含个人和群组）
+          * "personal": 仅个人记忆（personal_episode/personal_event_log/personal_semantic_memory）
+          * "group": 仅群组记忆（episode/event_log/semantic_memory）
         
         ## 返回格式：
         ```json
@@ -297,13 +318,14 @@ class AgenticV3Controller(BaseController):
             top_k = request_data.get("top_k", 20)
             retrieval_mode = request_data.get("retrieval_mode", "rrf")
             data_source = request_data.get("data_source", "memcell")
+            memory_scope = request_data.get("memory_scope", "all")  # 新增参数
             
             if not query:
                 raise ValueError("缺少必需参数：query")
             
             logger.info(
                 f"收到 lightweight 检索请求: query={query}, group_id={group_id}, "
-                f"mode={retrieval_mode}, source={data_source}, top_k={top_k}"
+                f"mode={retrieval_mode}, source={data_source}, scope={memory_scope}, top_k={top_k}"
             )
             
             # 2. 调用 memory_manager 的 lightweight 检索
@@ -315,6 +337,7 @@ class AgenticV3Controller(BaseController):
                 top_k=top_k,
                 retrieval_mode=retrieval_mode,
                 data_source=data_source,
+                memory_scope=memory_scope,
             )
             
             # 3. 返回统一格式

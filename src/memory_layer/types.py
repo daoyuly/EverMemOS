@@ -14,6 +14,7 @@ class MemoryType(Enum):
     PREFERENCES = "preferences"  # 偏好设置
     RELATIONSHIPS = "relationships"  # 人际关系
     SEMANTIC_SUMMARY = "semantic"  # 语义记忆
+    EVENT_LOG = "event_log"  # 事件日志
 
     GROUP_PROFILE = "group_profile"  # 群组画像
 

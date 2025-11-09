@@ -55,6 +55,14 @@ class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
                 description="群组ID",
             ),
             FieldSchema(
+                name="participants",
+                dtype=DataType.ARRAY,
+                element_type=DataType.VARCHAR,
+                max_capacity=100,
+                max_length=100,
+                description="参与者列表（用于群组记忆的用户过滤）",
+            ),
+            FieldSchema(
                 name="event_type",
                 dtype=DataType.VARCHAR,
                 max_length=50,

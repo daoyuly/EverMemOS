@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 import datetime
 import time
+import os
+from typing import List, Optional
 
 from core.observation.logger import get_logger
 
@@ -8,7 +10,7 @@ from .llm.llm_provider import LLMProvider
 from .memcell_extractor.conv_memcell_extractor import ConvMemCellExtractor
 from .memcell_extractor.base_memcell_extractor import RawData
 from .memcell_extractor.conv_memcell_extractor import ConversationMemCellExtractRequest
-from .types import MemCell
+from .types import MemCell, RawDataType, MemoryType
 from .memory_extractor.episode_memory_extractor import (
     EpisodeMemoryExtractor,
     EpisodeMemoryExtractRequest,
@@ -23,10 +25,11 @@ from .memory_extractor.group_profile_memory_extractor import (
     GroupProfileMemoryExtractRequest,
 )
 from .memory_extractor.event_log_extractor import EventLogExtractor
-import os
-from .types import RawDataType, MemoryType
+from .memory_extractor.semantic_memory_extractor import SemanticMemoryExtractor
 from .memcell_extractor.base_memcell_extractor import StatusResult
-from typing import List, Optional
+
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -186,7 +189,16 @@ class MemoryManager:
         group_name: Optional[str] = None,
         old_memory_list: Optional[List[Memory]] = None,
         user_organization: Optional[List] = None,
-    ) -> List[Memory]:
+        episode_memory: Optional[Memory] = None,  # 用于个人语义记忆和事件日志提取
+    ):
+        """
+        提取记忆
+        
+        Returns:
+            - EPISODE_SUMMARY/PROFILE/GROUP_PROFILE: 返回 List[Memory]
+            - SEMANTIC_SUMMARY: 返回 List[SemanticMemoryItem]
+            - EVENT_LOG: 返回 EventLog
+        """
         extractor = None
         request = None
 
@@ -223,7 +235,36 @@ class MemoryManager:
                 old_memory_list=old_memory_list,
                 user_organization=None,
             )
+        elif memory_type == MemoryType.SEMANTIC_SUMMARY and episode_memory:
+            # 为个人 episode 提取语义记忆
+            logger.debug(f"开始为个人 episode 提取语义记忆: user_id={episode_memory.user_id}")
+            
+            extractor = SemanticMemoryExtractor(
+                llm_provider=self.episode_memory_extractor_llm_provider
+            )
+            
+            semantic_memories = await extractor.generate_semantic_memories_for_episode(
+                episode_memory
+            )
+                        
+            return semantic_memories
+        
+        elif memory_type == MemoryType.EVENT_LOG and episode_memory:
+            # 为个人 episode 提取事件日志
+            logger.debug(f"开始为个人 episode 提取事件日志: user_id={episode_memory.user_id}")
+            
+            extractor = EventLogExtractor(
+                    llm_provider=self.event_log_llm_provider
+                )
+            
+            event_log = await extractor.extract_event_log(
+                episode_text=episode_memory.episode,
+                timestamp=episode_memory.timestamp
+            )
+            
+            return event_log
 
         if extractor == None or request == None:
             return []
         return await extractor.extract_memory(request)
+

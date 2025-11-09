@@ -1,8 +1,12 @@
 import random
 import time
+import json
+import traceback
 from memory_layer.memory_manager import MemorizeRequest, MemorizeOfflineRequest
 from memory_layer.memory_manager import MemoryManager
-from memory_layer.types import MemoryType, MemCell, Memory, RawDataType
+from memory_layer.types import MemoryType, MemCell, Memory, RawDataType, SemanticMemoryItem
+from memory_layer.memory_extractor.event_log_extractor import EventLog
+from memory_layer.memcell_extractor.base_memcell_extractor import RawData
 from infra_layer.adapters.out.persistence.document.memory.memcell import DataTypeEnum
 from memory_layer.memory_extractor.profile_memory_extractor import (
     ProfileMemory,
@@ -17,8 +21,15 @@ from memory_layer.memory_extractor.group_profile_memory_extractor import (
     GroupProfileMemory,
 )
 from core.di import get_bean_by_type, enable_mock_mode, scan_packages
+from component.redis_provider import RedisProvider
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
     EpisodicMemoryRawRepository,
+)
+from infra_layer.adapters.out.persistence.repository.personal_semantic_memory_raw_repository import (
+    PersonalSemanticMemoryRawRepository,
+)
+from infra_layer.adapters.out.persistence.repository.personal_event_log_raw_repository import (
+    PersonalEventLogRawRepository,
 )
 from infra_layer.adapters.out.persistence.repository.conversation_status_raw_repository import (
     ConversationStatusRawRepository,
@@ -43,7 +54,7 @@ from datetime import datetime, timedelta
 import os
 import asyncio
 from collections import defaultdict
-from common_utils.datetime_utils import get_now_with_timezone, to_iso_format
+from common_utils.datetime_utils import get_now_with_timezone, to_iso_format, from_iso_format
 from memory_layer.memcell_extractor.base_memcell_extractor import StatusResult
 import traceback
 
@@ -55,8 +66,23 @@ from infra_layer.adapters.out.search.elasticsearch.converter.episodic_memory_con
 from infra_layer.adapters.out.search.milvus.converter.episodic_memory_milvus_converter import (
     EpisodicMemoryMilvusConverter,
 )
+from infra_layer.adapters.out.search.elasticsearch.converter.personal_semantic_memory_converter import (
+    PersonalSemanticMemoryConverter,
+)
+from infra_layer.adapters.out.search.milvus.converter.personal_semantic_memory_milvus_converter import (
+    PersonalSemanticMemoryMilvusConverter,
+)
+from infra_layer.adapters.out.search.elasticsearch.converter.personal_event_log_converter import (
+    PersonalEventLogConverter,
+)
+from infra_layer.adapters.out.search.milvus.converter.personal_event_log_milvus_converter import (
+    PersonalEventLogMilvusConverter,
+)
 from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repository import (
     EpisodicMemoryMilvusRepository,
+)
+from infra_layer.adapters.out.search.repository.episodic_memory_es_repository import (
+    EpisodicMemoryEsRepository,
 )
 from biz_layer.memcell_milvus_sync import MemCellMilvusSyncService
 
@@ -95,6 +121,8 @@ def _convert_data_type_to_raw_data_type(data_type) -> RawDataType:
 from biz_layer.mem_db_operations import (
     _convert_timestamp_to_time,
     _convert_episode_memory_to_doc,
+    _convert_semantic_memory_to_doc,
+    _convert_event_log_to_docs,
     _save_memcell_to_database,
     _save_profile_memory_to_core,
     ConversationStatus,
@@ -159,208 +187,68 @@ from core.observation.tracing.decorators import trace_logger
 async def preprocess_conv_request(
     request: MemorizeRequest, current_time: datetime
 ) -> MemorizeRequest:
-
-    # load status table， 重新读取部分历史数据，覆盖history_raw_data_list和new_raw_data_list
-    logger.info("开始处理状态表逻辑...")
-
-    # 获取Repository实例
-    try:
-
-        status_repo = get_bean_by_type(ConversationStatusRawRepository)
-
-        logger.info("成功获取状态表和数据Repository")
-    except Exception as e:
-        logger.error(f"获取Repository失败，使用原逻辑: {e}")
-        traceback.print_exc()
-        # 如果无法获取Repository，继续使用原有逻辑
+    """
+    简化版的请求预处理：
+    1. 从 Redis 读取所有历史消息
+    2. 将历史消息作为 history_raw_data_list
+    3. 将当前新消息作为 new_raw_data_list
+    4. 边界检测由后续逻辑处理（检测后会清空或保留 Redis）
+    """
+    
+    logger.info(f"[preprocess] 开始处理: group_id={request.group_id}")
+    
+    # 检查是否有新数据
     if not request.new_raw_data_list:
-        logger.info("[mem_memorize] 没有新数据需要处理")
+        logger.info("[preprocess] 没有新数据，跳过处理")
         return None
-    else:
-        # 1. 获取当前对话状态
-        # 查询对话状态，真实repository返回DocConversationStatus
-        doc_status = await status_repo.get_by_group_id(request.group_id)
-        logger.debug(f"[mem_memorize] doc_status: {doc_status}")
-
-        # 转换为业务层模型
-        conversation_status = None
-        if doc_status:
-            conversation_status = ConversationStatus(
-                group_id=doc_status.group_id,
-                old_msg_start_time=_convert_timestamp_to_time(
-                    doc_status.old_msg_start_time
-                ),
-                new_msg_start_time=_convert_timestamp_to_time(
-                    doc_status.new_msg_start_time
-                ),
-                last_memcell_time=_convert_timestamp_to_time(
-                    doc_status.last_memcell_time
-                ),
-                created_at=(
-                    doc_status.created_at.isoformat()
-                    if hasattr(doc_status, 'created_at') and doc_status.created_at
-                    else to_iso_format(current_time)
-                ),
-                updated_at=(
-                    doc_status.updated_at.isoformat()
-                    if hasattr(doc_status, 'updated_at') and doc_status.updated_at
-                    else to_iso_format(current_time)
-                ),
-            )
-
-
-        # 3. 根据状态表决定如何读取历史数据
-        history_raw_data_list = request.history_raw_data_list
-        new_raw_data_list = request.new_raw_data_list
-
-        if conversation_status:
-            # 存在状态记录，根据状态决定数据范围
-            logger.info(f"[mem_memorize] 找到对话状态，重新构建数据范围")
-
-            # 获取old_msg_start_time和new_msg_start_time作为分界点
-            old_msg_start_time = _normalize_datetime_for_storage(
-                conversation_status.old_msg_start_time
-            )
-            new_msg_start_time = _normalize_datetime_for_storage(
-                conversation_status.new_msg_start_time
-            )
-
-            # 检查new_raw_data_list中最早的消息时间，如果比current new_msg_start_time更早，则调整时间边界
-            # 这是为了解决kafka输入不完全按顺序的问题
-            if request.new_raw_data_list and new_msg_start_time:
-                # 找到最早的消息时间
-                earliest_new_message_time = None
-                for raw_data in request.new_raw_data_list:
-                    message_time = extract_message_time(raw_data)
-                    if message_time and (
-                        earliest_new_message_time is None
-                        or message_time < earliest_new_message_time
-                    ):
-                        earliest_new_message_time = message_time
-
-                # 转换new_msg_start_time为datetime对象并比较
-                if earliest_new_message_time:
-
-                    # 如果最早消息时间比当前new_msg_start_time更早，则调整时间边界
-                    if (
-                        new_msg_start_time
-                        and earliest_new_message_time < new_msg_start_time
-                    ):
-                        logger.debug(
-                            f"[mem_memorize] 检测到更早的消息: {earliest_new_message_time} < {new_msg_start_time}"
-                        )
-
-                        # 调整new_msg_start_time为最早消息时间
-                        new_msg_start_time = earliest_new_message_time
-
-                        # 调整old_msg_start_time为min(原old_msg_start_time, new_msg_start_time - 1ms)
-                        new_boundary = earliest_new_message_time - timedelta(
-                            milliseconds=1
-                        )
-                        old_msg_start_time = min(old_msg_start_time, new_boundary)
-
-                        logger.debug(
-                            f"[mem_memorize] 时间边界已调整: old_msg_start_time={old_msg_start_time}, new_msg_start_time={new_msg_start_time}"
-                        )
-
-                        # 时间边界调整后，更新conversation status表
-                        try:
-                            update_data = {
-                                "old_msg_start_time": _normalize_datetime_for_storage(
-                                    old_msg_start_time
-                                ),
-                                "new_msg_start_time": _normalize_datetime_for_storage(
-                                    new_msg_start_time
-                                ),
-                                "updated_at": current_time,
-                            }
-
-                            result = await status_repo.upsert_by_group_id(
-                                request.group_id, update_data
-                            )
-                            if result:
-                                logger.debug(
-                                    f"[mem_memorize] 时间边界调整后，conversation status表更新成功"
-                                )
-                            else:
-                                logger.debug(
-                                    f"[mem_memorize] 时间边界调整后，conversation status表更新失败"
-                                )
-                        except Exception as e:
-                            logger.debug(
-                                f"时间边界调整后，更新conversation status表异常: {e}"
-                            )
-
-            # 读取历史数据：从old_msg_start_time到new_msg_start_time 前闭后开
-            now = time.time()
-            history_data = []
-            if new_msg_start_time:
-                history_data = await _get_raw_data_by_time_range(
-                    request.group_id,
-                    start_time=_normalize_datetime_for_storage(old_msg_start_time),
-                    end_time=_normalize_datetime_for_storage(new_msg_start_time),
-                    limit=500,  # 限制历史消息数量
-                )
-            # 移除高频调试日志
-            # 读取新数据：从new_msg_start_time到当前时间 +1ms是为了调整为前闭后闭
-            new_data = []
-            if new_msg_start_time:
-                new_data = await _get_raw_data_by_time_range(
-                    request.group_id,
-                    start_time=_normalize_datetime_for_storage(new_msg_start_time),
-                    end_time=_normalize_datetime_for_storage(current_time)
-                    + timedelta(milliseconds=1),  # 添加结束时间为当前时间
-                    limit=500,  # 限制新消息数量
-                )
-            # 移除高频调试日志
-            logger.info(
-                f"[mem_memorize] 从状态表重新读取: 历史数据 {len(history_data)} 条, 新数据 {len(new_data)} 条"
-            )
-
-            # 重新分配数据（如果 Redis 返回空，保留原始数据）
-            if history_data or new_data:
-                history_raw_data_list = history_data
-                new_raw_data_list = new_data
-                logger.info(
-                    f"[mem_memorize] 使用 Redis 数据: 历史 {len(history_raw_data_list)} 条, 新数据 {len(new_raw_data_list)} 条"
-                )
+    
+    # 从 Redis 读取所有历史消息
+    redis_key = f"chat_history:{request.group_id}"
+    
+    try:
+        redis_provider = get_bean_by_type(RedisProvider)
+        messages_json = await redis_provider.lrange(redis_key, 0, -1)
+        
+        logger.info(f"[preprocess] 从 Redis 读取 {len(messages_json)} 条历史消息")
+        
+        # 将 JSON 字符串转换为 RawData 对象
+        history_raw_data_list = []
+        for msg_json in messages_json:
+            msg_dict = json.loads(msg_json)
+            
+            # 提取消息时间
+            create_time_str = msg_dict.get('create_time')
+            if create_time_str:
+                message_time = from_iso_format(create_time_str)
             else:
-                history_raw_data_list = request.history_raw_data_list
-                new_raw_data_list = request.new_raw_data_list
-                logger.info(
-                    f"[mem_memorize] Redis 无数据，保留原始请求: 历史 {len(history_raw_data_list)} 条, 新数据 {len(new_raw_data_list)} 条"
-                )
-
-        else:
-            # 新对话，创建状态记录
-            logger.info(f"[mem_memorize] 新对话，创建状态记录")
-
-            # 获取最早消息时间
-            earliest_new_time = _convert_timestamp_to_time(current_time, current_time)
-            if request.new_raw_data_list:
-                first_msg = request.new_raw_data_list[0]
-                if hasattr(first_msg, 'content') and isinstance(
-                    first_msg.content, dict
-                ):
-                    earliest_new_time = first_msg.content.get(
-                        'timestamp', earliest_new_time
-                    )
-                elif hasattr(first_msg, 'timestamp'):
-                    earliest_new_time = first_msg.timestamp
-
-            # 使用封装函数创建新对话状态
-            await _update_status_for_new_conversation(
-                status_repo, request, earliest_new_time, current_time
+                message_time = current_time
+            
+            # 构造 RawData
+            raw_data = RawData(
+                content={
+                    "speaker_id": msg_dict.get("sender"),
+                    "speaker_name": msg_dict.get("sender_name", msg_dict.get("sender")),
+                    "content": msg_dict.get("content", ""),
+                    "timestamp": message_time,
+                },
+                data_id=str(msg_dict.get("message_id")),
+                data_type=RawDataType.CONVERSATION,
             )
-        # 4. 检查是否有数据需要处理
-        if not new_raw_data_list:
-            logger.info(f"[mem_memorize] 没有新数据需要处理")
-            return None
-
-        # 更新request的数据
+            history_raw_data_list.append(raw_data)
+        
+        # 更新 request
         request.history_raw_data_list = history_raw_data_list
-        request.new_raw_data_list = new_raw_data_list
-    return request
+        # new_raw_data_list 保持不变（就是新传入的消息）
+        
+        logger.info(f"[preprocess] 完成: 历史 {len(history_raw_data_list)} 条, 新消息 {len(request.new_raw_data_list)} 条")
+        
+        return request
+        
+    except Exception as e:
+        logger.error(f"[preprocess] Redis 读取失败: {e}")
+        traceback.print_exc()
+        # Redis 失败时，使用原始 request
+        return request
 
 
 async def update_status_when_no_memcell(
@@ -459,17 +347,26 @@ async def save_memories(
     )
     group_profile_raw_repo = get_bean_by_type(GroupProfileRawRepository)
     episodic_memory_milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
+    es_repo = get_bean_by_type(EpisodicMemoryEsRepository)
 
-    # 按memory_type分类保存
+    # 按对象类型分类保存
     episode_memories = [
-        m for m in memory_list if m.memory_type == MemoryType.EPISODE_SUMMARY
+        m for m in memory_list if isinstance(m, Memory) and hasattr(m, 'memory_type') and m.memory_type == MemoryType.EPISODE_SUMMARY
     ]
-    profile_memories = [m for m in memory_list if m.memory_type == MemoryType.PROFILE]
+    semantic_memories = [
+        m for m in memory_list if isinstance(m, SemanticMemoryItem)
+    ]
+    event_logs = [
+        m for m in memory_list if isinstance(m, EventLog)
+    ]
+    profile_memories = [
+        m for m in memory_list if isinstance(m, Memory) and hasattr(m, 'memory_type') and m.memory_type == MemoryType.PROFILE
+    ]
     group_profile_memories = [
-        m for m in memory_list if m.memory_type == MemoryType.GROUP_PROFILE
+        m for m in memory_list if isinstance(m, Memory) and hasattr(m, 'memory_type') and m.memory_type == MemoryType.GROUP_PROFILE
     ]
 
-    # 保存情景记忆到 EpisodicMemoryRawRepository（包括 ES/Milvus）
+    # 保存个人 episode 到 MongoDB/ES/Milvus
     for episode_mem in episode_memories:
         # 转换为EpisodicMemory文档格式
         doc = _convert_episode_memory_to_doc(episode_mem, current_time)
@@ -478,6 +375,7 @@ async def save_memories(
         
         # 保存到 ES
         es_doc = EpisodicMemoryConverter.from_mongo(doc)
+        es_doc.type = "personal_episode"  # 标记为个人episode
         await es_doc.save()
         
         # 保存到 Milvus（添加缺失的字段）
@@ -490,8 +388,9 @@ async def save_memories(
                 getattr(doc, 'event_id', None),
             )
         else:
-            # ⚠️ 旧 converter 缺少字段，手动补全
-            milvus_entity["memory_sub_type"] = "episode"  # 标记为 episode 类型
+            # 所有通过 save_memories 保存的 episode 都是从 EpisodeMemoryExtractor 提取的个人视角 episode
+            # 群组 episode 是存储在 MemCell.episode 中，由 memcell_milvus_sync.py 同步到 Milvus
+            milvus_entity["memory_sub_type"] = "personal_episode"
             milvus_entity["start_time"] = 0
             milvus_entity["end_time"] = 0
             # 字段名修正：旧 schema 是 detail → 新 schema 是 metadata
@@ -502,7 +401,11 @@ async def save_memories(
             # 确保 search_content 字段存在
             if "search_content" not in milvus_entity:
                 milvus_entity["search_content"] = milvus_entity.get("episode", "")[:500]
+            
             await episodic_memory_milvus_repo.insert(milvus_entity)
+            logger.debug(
+                f"✅ 保存 personal_episode: user_id={doc.user_id}, event_id={episode_mem.event_id}"
+            )
         
         logger.debug(f"✅ 保存 episode_memory: {episode_mem.event_id}")
 
@@ -522,9 +425,86 @@ async def save_memories(
             )
         except Exception as e:
             logger.error(f"保存Group Profile记忆失败: {e}")
+    
+    # 保存个人语义记忆到 MongoDB/Milvus/ES
+    semantic_memory_repo = get_bean_by_type(PersonalSemanticMemoryRawRepository)
+    
+    for sem_mem in semantic_memories:
+        if not sem_mem.content or not sem_mem.embedding:
+            continue
+        
+        parent_event_id = sem_mem.parent_event_id
+        parent_doc = await episodic_memory_repo.get_by_event_id(str(parent_event_id), sem_mem.user_id)
+        if not parent_doc:
+            continue
+        
+        # 转换为 PersonalSemanticMemory 文档格式并保存到 MongoDB
+        doc = _convert_semantic_memory_to_doc(sem_mem, parent_doc, current_time)
+        doc = await semantic_memory_repo.save(doc)
+        
+        # 保存到 ES
+        es_doc = PersonalSemanticMemoryConverter.from_mongo(doc)
+        await es_doc.save()
+        
+        # 保存到 Milvus
+        milvus_entity = PersonalSemanticMemoryMilvusConverter.from_mongo(doc)
+        vector = milvus_entity.get("vector") if isinstance(milvus_entity, dict) else None
+        
+        if not vector or (isinstance(vector, list) and len(vector) == 0):
+            logger.warning(
+                "[mem_memorize] 跳过写入Milvus：个人语义记忆向量为空，id=%s",
+                getattr(doc, 'id', None),
+            )
+        else:
+            await episodic_memory_milvus_repo.insert(milvus_entity)
+            logger.debug(f"✅ 保存 personal_semantic_memory 到 MongoDB/ES/Milvus: {doc.id}")
+    
+    # 保存个人事件日志到 MongoDB/Milvus/ES
+    event_log_repo = get_bean_by_type(PersonalEventLogRawRepository)
+    
+    for event_log in event_logs:
+        if not event_log.atomic_fact or not event_log.fact_embeddings:
+            continue
+        
+        parent_event_id = event_log.parent_event_id
+        parent_doc = await episodic_memory_repo.get_by_event_id(str(parent_event_id), event_log.user_id)
+        if not parent_doc:
+            continue
+        
+        # 转换为 PersonalEventLog 文档格式列表并保存到 MongoDB
+        docs = _convert_event_log_to_docs(event_log, parent_doc, current_time)
+        
+        for doc in docs:
+            # 保存到 MongoDB
+            doc = await event_log_repo.save(doc)
+            
+            # 保存到 ES
+            es_doc = PersonalEventLogConverter.from_mongo(doc)
+            await es_doc.save()
+            
+            # 保存到 Milvus
+            milvus_entity = PersonalEventLogMilvusConverter.from_mongo(doc)
+            vector = milvus_entity.get("vector") if isinstance(milvus_entity, dict) else None
+            
+            if not vector or (isinstance(vector, list) and len(vector) == 0):
+                logger.warning(
+                    "[mem_memorize] 跳过写入Milvus：个人事件日志向量为空，id=%s",
+                    getattr(doc, 'id', None),
+                )
+            else:
+                await episodic_memory_milvus_repo.insert(milvus_entity)
+        
+        logger.debug(f"✅ 保存 personal_event_log 到 MongoDB/ES/Milvus: {len(docs)} 条")
+    
+    # 刷新 Milvus，确保数据立即可搜索
+    if semantic_memories or event_logs or episode_memories:
+        await episodic_memory_milvus_repo.flush()
+        logger.info("[mem_memorize] Milvus 已刷新，数据立即可搜索")
 
     logger.info(f"[mem_memorize] 保存完成:")
     logger.info(f"  - EPISODE_SUMMARY: {len(episode_memories)} 个")
+    logger.info(f"  - SEMANTIC_SUMMARY: {len(semantic_memories)} 个")
+    logger.info(f"  - EVENT_LOG: {len(event_logs)} 个")
     logger.info(f"  - PROFILE: {len(profile_memories)} 个")
     logger.info(f"  - GROUP_PROFILE: {len(group_profile_memories)} 个")
 
@@ -604,7 +584,12 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
 
     memory_manager = MemoryManager()
 
-    memory_types = [MemoryType.EPISODE_SUMMARY]
+    # 定义需要提取的记忆类型：先提取个人 episode，再基于 episode 提取语义记忆和事件日志
+    memory_types = [
+        MemoryType.EPISODE_SUMMARY,
+        MemoryType.SEMANTIC_SUMMARY, 
+        MemoryType.EVENT_LOG
+    ]
     if request.raw_data_type == RawDataType.CONVERSATION:
         request = await preprocess_conv_request(request, current_time)
         if request == None:
@@ -616,6 +601,19 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
         #     if not acquired:
         #         logger.warning(f"[mem_memorize] 获取分布式锁失败: {request.group_id}")
         now = time.time()
+        
+        # 添加详细调试日志
+        logger.info(f"=" * 80)
+        logger.info(f"[边界检测] 开始检测: group_id={request.group_id}")
+        logger.info(f"[边界检测] 历史消息: {len(request.history_raw_data_list)} 条")
+        logger.info(f"[边界检测] 新消息: {len(request.new_raw_data_list)} 条")
+        if request.history_raw_data_list:
+            logger.info(f"[边界检测] 历史消息范围: {request.history_raw_data_list[0].content.get('timestamp')} ~ {request.history_raw_data_list[-1].content.get('timestamp')}")
+        if request.new_raw_data_list:
+            for idx, raw in enumerate(request.new_raw_data_list):
+                logger.info(f"[边界检测] 新消息[{idx}]: {raw.content.get('speaker_id')} - {raw.content.get('content')[:50]}... @ {raw.content.get('timestamp')}")
+        logger.info(f"=" * 80)
+        
         logger.debug(
             f"[memorize memorize] 提取MemCell开始: group_id={request.group_id}, group_name={request.group_name}, "
             f"semantic_extraction={request.enable_semantic_extraction}"
@@ -657,6 +655,18 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
     logger.debug(f"[mem_memorize] memcell_result: {memcell_result}")
     memcell, status_result = memcell_result
 
+    # 添加边界检测结果日志
+    logger.info(f"=" * 80)
+    logger.info(f"[边界检测结果] memcell is None: {memcell is None}")
+    logger.info(f"[边界检测结果] should_wait: {status_result.should_wait if status_result else 'N/A'}")
+    if memcell is None:
+        logger.info(f"[边界检测结果] 判断: {'需要等待更多消息' if status_result.should_wait else '非边界，继续累积'}")
+    else:
+        logger.info(f"[边界检测结果] 判断: 是边界！成功提取MemCell")
+        logger.info(f"[边界检测结果] MemCell event_id: {memcell.event_id}")
+        logger.info(f"[边界检测结果] Episode: {memcell.episode[:100] if memcell.episode else 'None'}...")
+    logger.info(f"=" * 80)
+
     if memcell == None:
         await update_status_when_no_memcell(
             request, status_result, current_time, request.raw_data_type
@@ -665,6 +675,16 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
         return None
     else:
         logger.info(f"[mem_memorize] 成功提取MemCell")
+        
+        # 判断为边界，清空 Redis 历史消息（重新开始累积）
+        redis_key = f"chat_history:{request.group_id}"
+        try:
+            redis_provider = get_bean_by_type(RedisProvider)
+            await redis_provider.delete(redis_key)
+            logger.info(f"[mem_memorize] 判断为边界，已清空 Redis 历史: {redis_key}")
+        except Exception as e:
+            logger.error(f"[mem_memorize] 清空 Redis 失败: {e}")
+            traceback.print_exc()
 
     # TODO: 读状态表，读取累积的MemCell数据表，判断是否要做memorize计算
 
@@ -711,25 +731,56 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
 
         # 提取记忆
         memory_list = []
+        episode_memories = []
+        
+        # 第一阶段：提取个人 episode
         for memory_type in memory_types:
-            # 移除单个类型提取的日志
-            extracted_memories = await memory_manager.extract_memory(
-                memcell_list=memcells,
-                memory_type=memory_type,
-                user_ids=participants,
-                group_id=request.group_id,
-                group_name=request.group_name,
-                old_memory_list=old_memory_list,
-            )
-            if extracted_memories:
-                memory_list += extracted_memories
-        # 移除详细的提取完成日志
-
-        # if print_memory:
-        #     logger.info(f"[mem_memorize] 打印记忆: {memory_list}")
-        # 保存记忆到数据库
-        if memory_list:
-            await save_memories(memory_list, current_time)
+            if memory_type == MemoryType.EPISODE_SUMMARY:
+                extracted_memories = await memory_manager.extract_memory(
+                    memcell_list=memcells,
+                    memory_type=memory_type,
+                    user_ids=participants,
+                    group_id=request.group_id,
+                    group_name=request.group_name,
+                    old_memory_list=old_memory_list,
+                )
+                if extracted_memories:
+                    episode_memories = extracted_memories
+                    memory_list += extracted_memories
+        
+        # 保存 episode 记忆到数据库
+        if episode_memories:
+            await save_memories(episode_memories, current_time)
+        
+        # 第二阶段：基于已保存的 episode 提取语义记忆和事件日志
+        for memory_type in memory_types:
+            if memory_type in [MemoryType.SEMANTIC_SUMMARY, MemoryType.EVENT_LOG]:
+                for episode_mem in episode_memories:
+                    extracted_memories = await memory_manager.extract_memory(
+                        memcell_list=[],
+                        memory_type=memory_type,
+                        user_ids=[episode_mem.user_id],
+                        episode_memory=episode_mem,
+                    )
+                    if extracted_memories:
+                        # 为提取的记忆添加元信息
+                        if isinstance(extracted_memories, list):
+                            for mem in extracted_memories:
+                                mem.parent_event_id = episode_mem.event_id
+                                mem.user_id = episode_mem.user_id
+                                mem.group_id = episode_mem.group_id
+                            memory_list += extracted_memories
+                        else:
+                            # EventLog 类型
+                            extracted_memories.parent_event_id = episode_mem.event_id
+                            extracted_memories.user_id = episode_mem.user_id
+                            extracted_memories.group_id = episode_mem.group_id
+                            memory_list.append(extracted_memories)
+        
+        # 保存语义记忆和事件日志
+        semantic_and_eventlog = [m for m in memory_list if m not in episode_memories]
+        if semantic_and_eventlog:
+            await save_memories(semantic_and_eventlog, current_time)
 
         await update_status_after_memcell(
             request, memcells, current_time, request.raw_data_type
@@ -740,7 +791,6 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
         return memory_list
     else:
         return None
-
 
 
 def get_version_from_request(request: MemorizeOfflineRequest) -> str:

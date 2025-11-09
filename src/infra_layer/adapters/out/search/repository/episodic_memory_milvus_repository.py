@@ -124,6 +124,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
                 "vector": vector,
                 "user_id": user_id,
                 "group_id": group_id or "",
+                "participants": participants or [],  # 添加 participants 字段
                 "event_type": event_type or "",
                 "memory_sub_type": memory_sub_type,  # 记忆子类型
                 "timestamp": int(timestamp.timestamp()),
@@ -195,13 +196,23 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             # 构建过滤表达式
             filter_expr = []
             if user_id:
-                filter_expr.append(f'user_id == "{user_id}"')
+                # 同时检查 user_id 字段和 participants 数组
+                # 使用 OR 逻辑：user_id 匹配 或者 user_id 在 participants 中
+                user_filter = f'(user_id == "{user_id}" or array_contains(participants, "{user_id}"))'
+                filter_expr.append(user_filter)
             if group_id:
                 filter_expr.append(f'group_id == "{group_id}"')
             if event_type:
                 filter_expr.append(f'event_type == "{event_type}"')
             if memory_sub_type:
-                filter_expr.append(f'memory_sub_type == "{memory_sub_type}"')
+                # 支持模糊匹配：如果 memory_sub_type 是 "episode"/"event_log"/"semantic_memory"
+                # 则匹配包含该子串的所有类型（例如 "episode" 匹配 "episode" 和 "personal_episode"）
+                if memory_sub_type in ["episode", "event_log", "semantic_memory"]:
+                    # 使用 like 操作符进行模糊匹配
+                    filter_expr.append(f'memory_sub_type like "%{memory_sub_type}%"')
+                else:
+                    # 精确匹配（例如 "personal_episode", "personal_event_log"）
+                    filter_expr.append(f'memory_sub_type == "{memory_sub_type}"')
             if start_time:
                 filter_expr.append(f'timestamp >= {int(start_time.timestamp())}')
             if end_time:
@@ -236,6 +247,10 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
                         metadata_json = hit.entity.get("metadata", "{}")
                         metadata = json.loads(metadata_json) if metadata_json else {}
 
+                        # 解析 search_content（统一为 JSON 数组格式）
+                        search_content_raw = hit.entity.get("search_content", "[]")
+                        search_content = json.loads(search_content_raw) if search_content_raw else []
+
                         result = {
                             "id": hit.entity.get("id"),
                             "score": float(hit.score),
@@ -247,9 +262,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
                                 hit.entity.get("timestamp", 0)
                             ),
                             "episode": hit.entity.get("episode"),
-                            "search_content": json.loads(
-                                hit.entity.get("search_content", "[]")
-                            ),
+                            "search_content": search_content,
                             "metadata": metadata,
                         }
                         search_results.append(result)
@@ -307,7 +320,9 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             # 构建过滤表达式
             filter_expr = []
             if user_id:
-                filter_expr.append(f'user_id == "{user_id}"')
+                # 同时检查 user_id 字段和 participants 数组
+                user_filter = f'(user_id == "{user_id}" or array_contains(participants, "{user_id}"))'
+                filter_expr.append(user_filter)
             if group_id:
                 filter_expr.append(f'group_id == "{group_id}"')
             if start_time:
