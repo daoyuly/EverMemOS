@@ -4,11 +4,11 @@
 """
 
 import json
+import httpx
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from agentic_layer.memory_manager import MemoryManager
 from demo.memory_config import ChatModeConfig, LLMConfig, ScenarioType
 from demo.memory_utils import query_memcells_by_group_and_time
 from demo.i18n_texts import I18nTexts
@@ -54,7 +54,11 @@ class ChatSession:
         
         # 服务
         self.llm_provider: Optional[LLMProvider] = None
-        self.memory_manager: Optional[MemoryManager] = None
+        
+        # API 配置
+        self.api_base_url = config.api_base_url
+        self.retrieve_lightweight_url = f"{self.api_base_url}/api/v3/agentic/retrieve_lightweight"
+        self.retrieve_agentic_url = f"{self.api_base_url}/api/v3/agentic/retrieve_agentic"
         
         # 最后一次检索元数据
         self.last_retrieval_metadata: Optional[Dict[str, Any]] = None
@@ -68,6 +72,9 @@ class ChatSession:
         try:
             display_name = "group_chat" if self.group_id == "AI产品群" else self.group_id
             print(f"\n[{self.texts.get('loading_label')}] {self.texts.get('loading_group_data', name=display_name)}")
+            
+            # 检查 API 服务器健康状态
+            await self._check_api_server()
             
             # 统计 MemCell 数量
             now = get_now_with_timezone()
@@ -83,7 +90,7 @@ class ChatSession:
             else:
                 print(f"[{self.texts.get('loading_label')}] {self.texts.get('loading_history_new')} ✅")
             
-            # 创建服务
+            # 创建 LLM Provider
             self.llm_provider = LLMProvider(
                 self.llm_config.provider,
                 model=self.llm_config.model,
@@ -93,8 +100,6 @@ class ChatSession:
                 max_tokens=self.llm_config.max_tokens,
             )
             
-            self.memory_manager = MemoryManager()
-            
             print(f"\n[{self.texts.get('hint_label')}] {self.texts.get('loading_help_hint')}\n")
             return True
         
@@ -103,6 +108,27 @@ class ChatSession:
             import traceback
             traceback.print_exc()
             return False
+    
+    async def _check_api_server(self) -> None:
+        """检查 API 服务器是否运行
+        
+        Raises:
+            ConnectionError: 如果服务器未运行
+        """
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                # 尝试访问健康检查端点或任何端点
+                response = await client.get(f"{self.api_base_url}/docs")
+                if response.status_code >= 500:
+                    raise ConnectionError("API 服务器返回错误")
+        except (httpx.ConnectError, httpx.TimeoutException, ConnectionError) as e:
+            error_msg = (
+                f"\n❌ 无法连接到 API 服务器: {self.api_base_url}\n\n"
+                f"请先启动 V3 API 服务器：\n"
+                f"  uv run python src/bootstrap.py start_server.py\n\n"
+                f"然后在另一个终端运行聊天应用。\n"
+            )
+            raise ConnectionError(error_msg) from e
     
     async def load_conversation_history(self) -> int:
         """从文件加载对话历史
@@ -166,7 +192,7 @@ class ChatSession:
             print(f"[{self.texts.get('error_label')}] {e}")
     
     async def retrieve_memories(self, query: str) -> List[Dict[str, Any]]:
-        """检索相关记忆 - 支持多种检索模式
+        """检索相关记忆 - 通过 HTTP API 调用
         
         Args:
             query: 用户查询
@@ -174,32 +200,13 @@ class ChatSession:
         Returns:
             检索到的记忆列表
         """
-        if not self.memory_manager:
-            raise RuntimeError("请先调用 initialize() 初始化会话")
-        
-        # 🔥 根据检索模式选择不同的 API
+        # 🔥 根据检索模式选择不同的 HTTP API 端点
         if self.retrieval_mode == "agentic":
-            # Agentic 检索：需要 LLM Provider
-            result = await self.memory_manager.retrieve_agentic(
-                query=query,
-                user_id="default",
-                group_id=self.group_id,
-                time_range_days=self.config.time_range_days,
-                top_k=self.config.top_k_memories,
-                llm_provider=self.llm_provider,  # 传递 LLM Provider
-                agentic_config=None,  # 使用默认配置
-            )
+            # Agentic 检索 API
+            result = await self._call_retrieve_agentic_api(query)
         else:
-            # 其他模式：使用 retrieve_lightweight API
-            result = await self.memory_manager.retrieve_lightweight(
-                query=query,
-                user_id="default",
-                group_id=self.group_id,
-                top_k=self.config.top_k_memories,
-                time_range_days=self.config.time_range_days,
-                retrieval_mode=self.retrieval_mode,  # rrf / embedding / bm25
-                data_source=self.data_source,        # memcell / event_log
-            )
+            # Lightweight 检索 API
+            result = await self._call_retrieve_lightweight_api(query)
         
         # 提取结果和元数据
         memories = result.get("memories", [])
@@ -209,6 +216,127 @@ class ChatSession:
         self.last_retrieval_metadata = metadata
         
         return memories
+    
+    async def _call_retrieve_lightweight_api(self, query: str) -> Dict[str, Any]:
+        """调用 Lightweight 检索 API（与 test_v3_retrieve_http.py 对齐）
+        
+        Args:
+            query: 用户查询
+            
+        Returns:
+            检索结果字典
+        """
+        # 🔥 关键：与 test_v3_retrieve_http.py 完全对齐
+        payload = {
+            "query": query,
+            "user_id": "user_001",  # 与 test 保持一致
+            "top_k": self.config.top_k_memories,
+            "data_source": self.data_source,  # memcell / event_log
+            "retrieval_mode": self.retrieval_mode,  # rrf / embedding / bm25
+            "memory_scope": "all",  # 检索所有记忆（个人 + 群组）
+        }
+        
+        # 调试日志（仅在开发环境显示）
+        # print(f"\n[DEBUG] Lightweight 检索请求:")
+        # print(f"  - API URL: {self.retrieve_lightweight_url}")
+        # print(f"  - query: {query}")
+        # print(f"  - user_id: user_001")
+        # print(f"  - retrieval_mode: {self.retrieval_mode}")
+        # print(f"  - data_source: {self.data_source}")
+        # print(f"  - memory_scope: all")
+        # print(f"  - top_k: {self.config.top_k_memories}")
+        
+        try:
+            # 🔥 与 test_v3_retrieve_http.py 完全一致：verify=False, timeout=30.0
+            async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+                response = await client.post(self.retrieve_lightweight_url, json=payload)
+                response.raise_for_status()
+                api_response = response.json()
+                
+                # 检查 API 响应状态
+                if api_response.get("status") == "ok":
+                    result = api_response.get("result", {"memories": [], "metadata": {}})
+                    # memories_count = len(result.get("memories", []))
+                    # print(f"  ✅ 检索成功: {memories_count} 条记忆")
+                    return result
+                else:
+                    error_msg = api_response.get('message', '未知错误')
+                    # print(f"  ❌ API 返回错误: {error_msg}")
+                    raise RuntimeError(f"API 返回错误: {error_msg}")
+        
+        except httpx.HTTPStatusError as e:
+            error_msg = f"HTTP {e.response.status_code}: {e.response.text}"
+            raise RuntimeError(error_msg)
+        except httpx.TimeoutException:
+            error_msg = "请求超时（超过30秒）"
+            raise RuntimeError(error_msg)
+        except httpx.ConnectError as e:
+            error_msg = f"连接失败: 无法连接到 {self.api_base_url}\n请确保 V3 API 服务已启动: uv run python src/bootstrap.py start_server.py"
+            raise RuntimeError(error_msg) from e
+        except Exception as e:
+            error_msg = f"检索失败: {type(e).__name__}: {e}"
+            raise RuntimeError(error_msg)
+    
+    async def _call_retrieve_agentic_api(self, query: str) -> Dict[str, Any]:
+        """调用 Agentic 检索 API（与 test_v3_retrieve_http.py 对齐）
+        
+        Args:
+            query: 用户查询
+            
+        Returns:
+            检索结果字典
+        """
+        # 🔥 关键：与 test_v3_retrieve_http.py 完全对齐
+        payload = {
+            "query": query,
+            "user_id": "user_001",  # 与 test 保持一致
+            "top_k": self.config.top_k_memories,
+            "time_range_days": self.config.time_range_days,  # 使用配置的时间范围
+        }
+        
+        # 调试日志（仅在开发环境显示）
+        # print(f"\n[DEBUG] Agentic 检索请求:")
+        # print(f"  - API URL: {self.retrieve_agentic_url}")
+        # print(f"  - query: {query}")
+        # print(f"  - user_id: user_001")
+        # print(f"  - top_k: {self.config.top_k_memories}")
+        # print(f"  - time_range_days: {self.config.time_range_days}")
+        
+        # 显示友好的等待提示
+        print(f"\n⏳ 正在检索记忆...")
+        # print(f"   涉及：LLM 充分性判断 → 多轮检索 → 结果融合")
+        
+        try:
+            # 🔥 Agentic 检索需要更长时间：增加到 180 秒（3分钟）
+            # 因为涉及 LLM 调用、充分性判断、多轮检索等复杂操作
+            async with httpx.AsyncClient(timeout=180.0, verify=False) as client:
+                response = await client.post(self.retrieve_agentic_url, json=payload)
+                response.raise_for_status()
+                api_response = response.json()
+                
+                # 检查 API 响应状态
+                if api_response.get("status") == "ok":
+                    result = api_response.get("result", {"memories": [], "metadata": {}})
+                    # memories_count = len(result.get("memories", []))
+                    # print(f"  ✅ 检索成功: {memories_count} 条记忆")
+                    return result
+                else:
+                    error_msg = api_response.get('message', '未知错误')
+                    # print(f"  ❌ API 返回错误: {error_msg}")
+                    raise RuntimeError(f"API 返回错误: {error_msg}")
+        
+        except httpx.HTTPStatusError as e:
+            error_msg = f"HTTP {e.response.status_code}: {e.response.text}"
+            raise RuntimeError(error_msg)
+        except httpx.TimeoutException:
+            error_msg = "请求超时（超过180秒）\n提示：Agentic 检索涉及 LLM 调用和多轮检索，耗时较长\n建议：使用 RRF/Embedding/BM25 检索模式（更快）"
+            raise RuntimeError(error_msg)
+        except httpx.ConnectError as e:
+            error_msg = f"连接失败: 无法连接到 {self.api_base_url}\n请确保 V3 API 服务已启动: uv run python src/bootstrap.py start_server.py"
+            raise RuntimeError(error_msg) from e
+        except Exception as e:
+            error_msg = f"Agentic 检索失败: {type(e).__name__}: {e}"
+            raise RuntimeError(error_msg)
     
     def build_prompt(self, user_query: str, memories: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         """构建 Prompt
