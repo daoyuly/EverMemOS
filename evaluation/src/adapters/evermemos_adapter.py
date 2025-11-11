@@ -102,6 +102,36 @@ class EverMemOSAdapter(BaseAdapter):
             return conversation_id.split("_")[-1]
         return conversation_id
     
+    def _check_missing_indexes(
+        self,
+        index_dir: Path,
+        num_conv: int,
+        index_type: str = "bm25"
+    ) -> List[int]:
+        """
+        检查缺失的索引文件
+        
+        Args:
+            index_dir: 索引目录
+            num_conv: 会话总数
+            index_type: 索引类型（"bm25" 或 "embedding"）
+        
+        Returns:
+            缺失索引的会话索引列表
+        """
+        missing_indexes = []
+        
+        for i in range(num_conv):
+            if index_type == "bm25":
+                index_file = index_dir / f"bm25_index_conv_{i}.pkl"
+            else:  # embedding
+                index_file = index_dir / f"embedding_index_conv_{i}.pkl"
+            
+            if not index_file.exists():
+                missing_indexes.append(i)
+        
+        return missing_indexes
+    
     async def add(
         self, 
         conversations: List[Conversation],
@@ -153,13 +183,20 @@ class EverMemOSAdapter(BaseAdapter):
                     pseudo_time = base_time + timedelta(seconds=idx * 30)
                     timestamp_str = to_iso_format(pseudo_time)
                 
-                raw_data.append({
+                message_dict = {
                     "speaker_id": msg.speaker_id,
                     "user_name": msg.speaker_name or msg.speaker_id,
                     "speaker_name": msg.speaker_name or msg.speaker_id,
                     "content": msg.content,
                     "timestamp": timestamp_str,
-                })
+                }
+                
+                # 添加可选字段
+                for optional_field in ["img_url", "blip_caption", "query"]:
+                    if optional_field in msg.metadata and msg.metadata[optional_field] is not None:
+                        message_dict[optional_field] = msg.metadata[optional_field]
+                
+                raw_data.append(message_dict)
             
             raw_data_dict[conv_id] = raw_data
         
@@ -304,25 +341,57 @@ class EverMemOSAdapter(BaseAdapter):
         exp_config = self._convert_config_to_experiment_config()
         exp_config.num_conv = len(conversations)  # 设置会话数量
         
-        # 构建 BM25 索引
-        console.print("🔨 构建 BM25 索引...", style="yellow")
-        stage2_index_building.build_bm25_index(
-            config=exp_config,
-            data_dir=memcells_dir,
-            bm25_save_dir=bm25_index_dir,
+        # 🔥 智能跳过逻辑：检查已存在的索引文件
+        bm25_need_build = self._check_missing_indexes(
+            index_dir=bm25_index_dir,
+            num_conv=len(conversations),
+            index_type="bm25"
         )
-        console.print("✅ BM25 索引构建完成", style="green")
         
-        # 构建 Embedding 索引（如果启用）
+        emb_need_build = []
         use_hybrid = self.config.get("search", {}).get("use_hybrid_search", True)
         if use_hybrid:
-            console.print("🔨 构建 Embedding 索引...", style="yellow")
-            await stage2_index_building.build_emb_index(
+            emb_need_build = self._check_missing_indexes(
+                index_dir=emb_index_dir,
+                num_conv=len(conversations),
+                index_type="embedding"
+            )
+        
+        # 统计信息
+        total_convs = len(conversations)
+        bm25_to_build = len(bm25_need_build)
+        emb_to_build = len(emb_need_build) if use_hybrid else 0
+        
+        console.print(f"\n📊 索引构建统计:")
+        console.print(f"   总会话数: {total_convs}")
+        console.print(f"   BM25 索引: 需要构建 {bm25_to_build}, 已存在 {total_convs - bm25_to_build}")
+        if use_hybrid:
+            console.print(f"   Embedding 索引: 需要构建 {emb_to_build}, 已存在 {total_convs - emb_to_build}")
+        
+        # 构建 BM25 索引
+        if bm25_to_build > 0:
+            console.print(f"\n🔨 构建 BM25 索引 ({bm25_to_build} 个会话)...", style="yellow")
+            stage2_index_building.build_bm25_index(
                 config=exp_config,
                 data_dir=memcells_dir,
-                emb_save_dir=emb_index_dir,
+                bm25_save_dir=bm25_index_dir,
             )
-            console.print("✅ Embedding 索引构建完成", style="green")
+            console.print("✅ BM25 索引构建完成", style="green")
+        else:
+            console.print("✅ BM25 索引已全部存在，跳过构建", style="green")
+        
+        # 构建 Embedding 索引（如果启用）
+        if use_hybrid:
+            if emb_to_build > 0:
+                console.print(f"\n🔨 构建 Embedding 索引 ({emb_to_build} 个会话)...", style="yellow")
+                await stage2_index_building.build_emb_index(
+                    config=exp_config,
+                    data_dir=memcells_dir,
+                    emb_save_dir=emb_index_dir,
+                )
+                console.print("✅ Embedding 索引构建完成", style="green")
+            else:
+                console.print("✅ Embedding 索引已全部存在，跳过构建", style="green")
         
         # ========== 方案 A：返回索引元数据（延迟加载） ==========
         # 不加载索引到内存，只返回路径和元数据
@@ -439,6 +508,40 @@ class EverMemOSAdapter(BaseAdapter):
                 }
             })
         
+        # 🔥 构建 formatted_context
+        formatted_context = ""
+        conversation = kwargs.get("conversation")
+        if conversation and top_results:
+            # 获取 speaker 信息
+            speaker_a = conversation.metadata.get("speaker_a", "Speaker A")
+            speaker_b = conversation.metadata.get("speaker_b", "Speaker B")
+            
+            # 🔥 使用 config.response_top_k 而不是硬编码的 10
+            response_top_k = exp_config.response_top_k
+            
+            # 构建 context
+            retrieved_docs_text = []
+            for doc, score in top_results[:response_top_k]:  # 使用 config 中的 response_top_k
+                subject = doc.get('subject', 'N/A')
+                episode = doc.get('episode', 'N/A')
+                doc_text = f"{subject}: {episode}\n---"
+                retrieved_docs_text.append(doc_text)
+            
+            speaker_memories = "\n\n".join(retrieved_docs_text)
+            
+            TEMPLATE = """Episodes memories for conversation between {speaker_1} and {speaker_2}:
+
+    {speaker_memories}
+"""
+            formatted_context = TEMPLATE.format(
+                speaker_1=speaker_a,
+                speaker_2=speaker_b,
+                speaker_memories=speaker_memories,
+            )
+        
+        # 添加 formatted_context 到 metadata
+        metadata["formatted_context"] = formatted_context
+        
         return SearchResult(
             query=query,
             conversation_id=conversation_id,
@@ -512,35 +615,6 @@ class EverMemOSAdapter(BaseAdapter):
         if "mode" in search_config:
             exp_config.retrieval_mode = search_config["mode"]
             exp_config.use_agentic_retrieval = (exp_config.retrieval_mode == "agentic")
-        
-        # 其他 search 参数（如果 YAML 中有指定才覆盖）
-        search_param_mapping = {
-            "use_hybrid_search": "use_hybrid_search",
-            "use_reranker": "use_reranker",
-            "hybrid_emb_candidates": "hybrid_emb_candidates",
-            "hybrid_bm25_candidates": "hybrid_bm25_candidates",
-            "hybrid_rrf_k": "hybrid_rrf_k",
-            "reranker_top_n": "reranker_top_n",
-            "reranker_batch_size": "reranker_batch_size",
-            "reranker_max_retries": "reranker_max_retries",
-            "reranker_retry_delay": "reranker_retry_delay",
-            "reranker_timeout": "reranker_timeout",
-            "reranker_fallback_threshold": "reranker_fallback_threshold",
-            "reranker_instruction": "reranker_instruction",
-            "reranker_concurrent_batches": "reranker_concurrent_batches",
-        }
-        for yaml_key, config_attr in search_param_mapping.items():
-            if yaml_key in search_config:
-                setattr(exp_config, config_attr, search_config[yaml_key])
-        
-        # 特殊处理：use_emb 与 use_hybrid_search 关联
-        if "use_hybrid_search" in search_config:
-            exp_config.use_emb = search_config["use_hybrid_search"]
-        
-        # 映射 Answer 阶段配置（如果有的话）
-        answer_config = self.config.get("answer", {})
-        if "max_retries" in answer_config:
-            exp_config.max_retries = answer_config["max_retries"]
         
         return exp_config
     

@@ -6,6 +6,7 @@ Search 阶段
 import asyncio
 from typing import List, Any, Optional
 from logging import Logger
+from tqdm import tqdm
 
 from evaluation.src.core.data_models import QAPair, SearchResult
 from evaluation.src.adapters.base import BaseAdapter
@@ -23,7 +24,7 @@ async def run_search_stage(
     """
     并发执行检索，支持细粒度 checkpoint
     
-    按会话分组处理，每处理完一个会话就保存 checkpoint（和 archive 的 stage3 一致）
+    按会话分组处理，每处理完一个会话就保存 checkpoint
     
     Args:
         adapter: 系统适配器
@@ -68,24 +69,36 @@ async def run_search_stage(
     
     semaphore = asyncio.Semaphore(20)
     
-    async def search_single(qa):
+    # 🔥 创建细粒度进度条（按问题追踪）
+    total_questions = len(qa_pairs)
+    processed_questions = sum(len(all_search_results_dict.get(conv_id, [])) for conv_id in processed_convs)
+    
+    pbar = tqdm(
+        total=total_questions,
+        initial=processed_questions,
+        desc="🔍 Search Progress",
+        unit="qa"
+    )
+    
+    async def search_single_with_tracking(qa):
         async with semaphore:
             conv_id = qa.metadata.get("conversation_id", "0")
             conversation = conv_id_to_conv.get(conv_id)
-            return await adapter.search(qa.question, conv_id, index, conversation=conversation)
+            result = await adapter.search(qa.question, conv_id, index, conversation=conversation)
+            pbar.update(1)  # 每完成一个问题就更新进度条
+            return result
     
-    # 按会话逐个处理（和 archive 一致）
+    # 按会话逐个处理
     for idx, (conv_id, qa_list) in enumerate(sorted(conv_to_qa.items())):
         # 🔥 跳过已处理的会话
         if conv_id in processed_convs:
-            print(f"\n⏭️  Skipping Conversation ID: {conv_id} (already processed)")
+            tqdm.write(f"⏭️  Skipping Conversation ID: {conv_id} (already processed)")
             continue
         
-        print(f"\n--- Processing Conversation ID: {conv_id} ({idx+1}/{total_convs}) ---")
-        print(f"    Questions in this conversation: {len(qa_list)}")
+        tqdm.write(f"Processing Conversation ID: {conv_id} ({idx+1}/{total_convs}) - {len(qa_list)} questions")
         
         # 并发处理这个会话的所有问题
-        tasks = [search_single(qa) for qa in qa_list]
+        tasks = [search_single_with_tracking(qa) for qa in qa_list]
         results_for_conv = await asyncio.gather(*tasks)
         
         # 将结果保存为字典格式
@@ -102,9 +115,12 @@ async def run_search_stage(
         
         all_search_results_dict[conv_id] = results_for_conv_dict
         
-        # 🔥 每处理完一个会话就保存检查点（和 archive 一致）
+        # 🔥 每处理完一个会话就保存检查点
         if checkpoint_manager:
             checkpoint_manager.save_search_progress(all_search_results_dict)
+    
+    # 关闭进度条
+    pbar.close()
     
     # 🔥 完成后删除细粒度检查点
     if checkpoint_manager:

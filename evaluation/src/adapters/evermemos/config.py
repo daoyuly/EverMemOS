@@ -64,7 +64,7 @@ class ExperimentConfig:
     "or details that directly answer the question.")
     
     # 🔥 Stage4 参数：从 event_ids 中选择 top-k 构建 context
-    response_top_k: int = 5  # 从检索到的 event_ids 中选择前 k 个构建 context
+    response_top_k: int = 20  # 从检索到的 event_ids 中选择前 k 个构建 context
     
     llm_service: str = "openai"  # openai, vllm
     llm_config: dict = {

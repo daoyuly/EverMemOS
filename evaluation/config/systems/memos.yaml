@@ -7,7 +7,7 @@ description: "Memos"
 adapter: "memos"
 
 # Memos API configuration
-api_url: "${MEMOS_ONLINE_URL}"
+api_url: "https://memos.memtensor.cn/api/openmem/v1"
 api_key: "${MEMOS_KEY}"
 batch_size: 10  # 每批次发送的消息数量（默认）
 max_retries: 5
@@ -20,13 +20,8 @@ dataset_overrides:
 
 # ⏰ Post-Add Wait: 等待后台索引构建完成
 # Online API 系统通常是异步处理，需要时间构建索引
-# 建议值：30-60 秒（根据数据量调整）
 post_add_wait_seconds: 120  # 等待 120 秒后再开始 search
 
-# Search configuration
-search_mode: "fast"  # fast | accurate
-include_preference: true  # Include user preferences in search results
-pref_top_k: 6  # Number of top preferences to retrieve
 
 # LLM configuration (for answer generation)
 llm:

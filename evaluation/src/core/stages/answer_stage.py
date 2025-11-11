@@ -7,6 +7,7 @@ import asyncio
 import time
 from typing import List, Optional
 from logging import Logger
+from tqdm import tqdm
 
 from evaluation.src.core.data_models import QAPair, SearchResult, AnswerResult
 from evaluation.src.adapters.base import BaseAdapter
@@ -63,7 +64,7 @@ async def run_answer_stage(
     """
     生成答案，支持细粒度 checkpoint
     
-    每 SAVE_INTERVAL 个问题保存一次 checkpoint（和 archive 的 stage4 一致）
+    每 SAVE_INTERVAL 个问题保存一次 checkpoint
     
     Args:
         adapter: 系统适配器
@@ -79,7 +80,7 @@ async def run_answer_stage(
     print(f"Stage 3/4: Answer")
     print(f"{'='*60}")
     
-    SAVE_INTERVAL = 400  # 🔥 和 archive 保持一致：每 400 个任务保存一次
+    SAVE_INTERVAL = 400  # 每 400 个任务保存一次
     MAX_CONCURRENT = 50  # 最大并发数
     
     # 🔥 加载细粒度 checkpoint
@@ -118,7 +119,8 @@ async def run_answer_stage(
                     golden_answer=result_dict["golden_answer"],
                     category=result_dict.get("category"),
                     conversation_id=result_dict.get("conversation_id", ""),
-                    search_results=result_dict.get("search_results", []),
+                    formatted_context=result_dict.get("formatted_context", ""),  # 🔥 加载 formatted_context
+                    # search_results=result_dict.get("search_results", []),  # 🔥 不再加载 search_results
                 ))
         return results
     
@@ -126,6 +128,14 @@ async def run_answer_stage(
     completed = processed_count
     failed = 0
     start_time = time.time()
+    
+    # 🔥 使用 tqdm 进度条（对齐 evaluation_archive）
+    pbar = tqdm(
+        total=total_qa_count,
+        initial=processed_count,
+        desc="💬 Answer Progress",
+        unit="qa"
+    )
     
     async def answer_single_with_tracking(qa, search_result):
         nonlocal completed, failed
@@ -159,7 +169,7 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and 
                 answer = answer.strip()
             
             except Exception as e:
-                print(f"  ⚠️ Answer generation failed for {qa.question_id}: {e}")
+                tqdm.write(f"  ⚠️ Answer generation failed for {qa.question_id}: {e}")
                 answer = "Error: Failed to generate answer"
                 failed += 1
             
@@ -170,7 +180,8 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and 
                 golden_answer=qa.answer,
                 category=qa.category,
                 conversation_id=search_result.conversation_id,
-                search_results=search_result.results,
+                formatted_context=context,  # 🔥 保存实际使用的上下文
+                # search_results=search_result.results,  # 🔥 不再保存详细检索结果（节省 99% 空间）
             )
             
             # 保存结果
@@ -181,19 +192,21 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and 
                 "golden_answer": result.golden_answer,
                 "category": result.category,
                 "conversation_id": result.conversation_id,
-                "search_results": result.search_results,
+                "formatted_context": result.formatted_context,  # 🔥 保存 formatted_context
+                # "search_results": result.search_results,  # 🔥 不再保存（节省 99% 空间）
             }
             
             completed += 1
+            pbar.update(1)  # 更新进度条
             
-            # 🔥 定期保存 checkpoint（和 archive 一致）
+            # 🔥 定期保存 checkpoint
             if checkpoint_manager and (completed % SAVE_INTERVAL == 0 or completed == total_qa_count):
                 elapsed = time.time() - start_time
                 speed = completed / elapsed if elapsed > 0 else 0
                 eta = (total_qa_count - completed) / speed if speed > 0 else 0
                 
-                print(f"Progress: {completed}/{total_qa_count} ({completed/total_qa_count*100:.1f}%) | "
-                      f"Speed: {speed:.1f} qa/s | Failed: {failed} | ETA: {eta/60:.1f} min")
+                tqdm.write(f"Progress: {completed}/{total_qa_count} ({completed/total_qa_count*100:.1f}%) | "
+                          f"Speed: {speed:.1f} qa/s | Failed: {failed} | ETA: {eta/60:.1f} min")
                 
                 checkpoint_manager.save_answer_progress(all_answer_results, completed, total_qa_count)
             
@@ -207,6 +220,9 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and 
     
     # 并发执行
     await asyncio.gather(*tasks)
+    
+    # 关闭进度条
+    pbar.close()
     
     # 统计信息
     elapsed_time = time.time() - start_time
@@ -222,7 +238,7 @@ IMPORTANT: This is a multiple-choice question. You MUST analyze the context and 
     print(f"   - Average speed: {total_qa_count/elapsed_time:.1f} qa/s")
     print(f"{'='*60}\n")
     
-    # 🔥 完成后删除细粒度检查点（和 archive 一致）
+    # 🔥 完成后删除细粒度检查点
     if checkpoint_manager:
         checkpoint_manager.delete_answer_checkpoints()
     

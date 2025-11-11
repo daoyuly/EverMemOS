@@ -23,16 +23,20 @@ class MemosAdapter(OnlineAPIAdapter):
     
     支持：
     - 记忆摄入（支持对话上下文）
-    - 记忆检索（支持偏好提取）
-    - 多种检索模式（fast, accurate）
+    - 记忆检索
+    
+    官方 API 支持的参数：
+    - user_id (必需) - 格式：{conv_id}_{speaker}，已包含会话信息
+    - query (必需)
+    - memory_limit_number (可选，默认 6)
+    
+    注意：不使用 conversation_id 参数，因为 user_id 已经包含了会话信息
     
     配置示例：
     ```yaml
     adapter: "memos"
     api_url: "${MEMOS_URL}"
     api_key: "${MEMOS_KEY}"
-    search_mode: "fast"  # fast | accurate
-    include_preference: true
     ```
     """
     
@@ -53,18 +57,13 @@ class MemosAdapter(OnlineAPIAdapter):
             "Authorization": api_key
         }
         
-        # 检索配置
-        self.search_mode = config.get("search_mode", "fast")
-        self.include_preference = config.get("include_preference", True)
-        self.pref_top_k = config.get("pref_top_k", 6)
+        # 检索配置（只保留 batch_size 和 max_retries，其他参数不被官方 API 支持）
         self.batch_size = config.get("batch_size", 9999)  # Memos 支持大批量
         self.max_retries = config.get("max_retries", 5)
         
         self.console = Console()
         
         print(f"   API URL: {self.api_url}")
-        print(f"   Search Mode: {self.search_mode}")
-        print(f"   Include Preference: {self.include_preference}")
     
     async def add(
         self, 
@@ -226,26 +225,32 @@ class MemosAdapter(OnlineAPIAdapter):
         """
         单用户搜索（内部方法）
         
+        Args:
+            query: 查询文本
+            user_id: 用户ID（格式：{conv_id}_{speaker}，已包含会话信息）
+            top_k: 返回记忆数量
+        
         Returns:
             搜索结果字典：
             {
                 "text_mem": [{"memories": [...]}],
                 "pref_string": "Explicit Preference:\n1. ..."
             }
+        
+        注意：
+            不需要传递 conversation_id 参数，因为 user_id 已经包含了会话信息。
+            例如：user_id="locomo_0_Caroline" 已经唯一标识了 locomo_0 这个会话。
         """
         url = f"{self.api_url}/search/memory"
         
-        payload = json.dumps(
-            {
-                "query": query,
-                "user_id": user_id,
-                "memory_limit_number": top_k,
-                "mode": self.search_mode,
-                "include_preference": self.include_preference,
-                "pref_top_k": self.pref_top_k,
-            },
-            ensure_ascii=False
-        )
+        # 只使用官方必需的参数
+        payload_dict = {
+            "query": query,
+            "user_id": user_id,
+            "memory_limit_number": top_k,
+        }
+        
+        payload = json.dumps(payload_dict, ensure_ascii=False)
         
         # 重试机制
         for attempt in range(self.max_retries):
@@ -390,7 +395,6 @@ class MemosAdapter(OnlineAPIAdapter):
             results=search_results,
             retrieval_metadata={
                 "system": "memos",
-                "search_mode": self.search_mode,
                 "preferences": {"pref_string": pref_string},
                 "top_k": top_k,
                 "user_ids": [user_id],  # 单视角：只有一个 user_id
@@ -488,7 +492,6 @@ class MemosAdapter(OnlineAPIAdapter):
             results=all_results,  # 🔥 返回详细的记忆列表（每条带 user_id）
             retrieval_metadata={
                 "system": "memos",
-                "search_mode": self.search_mode,
                 "dual_perspective": True,
                 "formatted_context": formatted_context,  # 套用 template 后的结果
                 "top_k": top_k,
@@ -506,7 +509,6 @@ class MemosAdapter(OnlineAPIAdapter):
             "name": "Memos",
             "type": "online_api",
             "description": "Memos - Memory System with Preference Support",
-            "search_mode": self.search_mode,
             "adapter": "MemosAdapter",
         }
 

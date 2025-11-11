@@ -59,12 +59,18 @@ class Mem0Adapter(OnlineAPIAdapter):
         self.max_content_length = config.get("max_content_length", 8000)
         self.console = Console()
         
-        # 设置 custom instructions（如果配置中有）
+        # 设置 custom instructions（从 prompts.yaml 加载）
+        # 优先使用 config 中的设置（向后兼容），否则从 prompts 加载
         custom_instructions = config.get("custom_instructions", None)
+        if not custom_instructions:
+            # 从 prompts.yaml 加载
+            custom_instructions = self._prompts.get("add_stage", {}).get("mem0", {}).get("custom_instructions", None)
+            print(f"   ✅ Custom instructions set (from prompts.yaml)")
+        
         if custom_instructions:
             try:
                 self.client.update_project(custom_instructions=custom_instructions)
-                print(f"   ✅ Custom instructions set")
+                print(f"   ✅ Custom instructions set (from prompts.yaml)")
             except Exception as e:
                 print(f"   ⚠️  Failed to set custom instructions: {e}")
         

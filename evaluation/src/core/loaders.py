@@ -113,11 +113,12 @@ def _convert_locomo_conversation(conversation_data: dict, conv_id: str) -> Conve
     """转换 LoCoMo 对话"""
     messages = []
     
-    # 获取所有 session keys
-    session_keys = sorted([
-        key for key in conversation_data.keys()
-        if key.startswith("session_") and not key.endswith("_date_time")
-    ])
+    # 获取所有 session keys，按照数字大小排序
+    session_keys = sorted(
+        [key for key in conversation_data.keys()
+         if key.startswith("session_") and not key.endswith("_date_time")],
+        key=lambda x: int(x.split("_")[1])  # 提取 session_X 中的数字 X 进行排序
+    )
     
     # 🔥 为没有时间戳的数据生成伪造的起始时间（用于 online API）
     # 使用一个固定的基准时间：2024-01-01 00:00:00
@@ -193,16 +194,24 @@ def _convert_locomo_conversation(conversation_data: dict, conv_id: str) -> Conve
         for msg_idx, msg in enumerate(session_messages):
             msg_timestamp = current_session_time + timedelta(seconds=msg_idx * time_interval)
             
+            # 🔥 处理图片信息（对齐 evaluation_archive）
+            content = msg['text']
+            if msg.get("img_url"):
+                blip_caption = msg.get("blip_caption", "an image")
+                speaker_name = msg['speaker']
+                content = f"[{speaker_name} shared an image: {blip_caption}] {content}"
+            
             message = Message(
                 speaker_id=f"{msg['speaker'].lower().replace(' ', '_')}_{conv_id}",
                 speaker_name=msg['speaker'],
-                content=msg['text'],
+                content=content,  # 🔥 使用处理后的 content
                 timestamp=msg_timestamp,
                 metadata={
                     "session": session_key,
                     "dia_id": msg.get("dia_id"),
                     "img_url": msg.get("img_url"),
                     "blip_caption": msg.get("blip_caption"),
+                    "query": msg.get("query"),
                     "is_fake_timestamp": is_fake_timestamp,  # 标记是否为伪造时间戳
                 }
             )

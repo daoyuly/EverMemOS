@@ -225,21 +225,22 @@ def reciprocal_rank_fusion(
         
         融合结果: [(doc1, 0.0323), (doc2, 0.0323), (doc3, 0.0159), (doc4, 0.0159)]
     """
-    # 使用文档的内存地址作为唯一标识（避免序列化开销）
-    # 同时保存文档引用，用于最后返回
-    doc_rrf_scores = {}  # {doc_id: rrf_score}
-    doc_map = {}         # {doc_id: doc}
+    # 🔥 修复：使用 event_id 作为唯一标识，而不是 Python 内存地址
+    # 原因：BM25 和 Embedding 索引分别加载 JSON，创建了不同的 Python 对象
+    # 即使内容相同，id() 也会不同，导致无法去重
+    doc_rrf_scores = {}  # {event_id: rrf_score}
+    doc_map = {}         # {event_id: doc}
     
     # 处理 Embedding 检索结果
     for rank, (doc, score) in enumerate(emb_results, start=1):
-        doc_id = id(doc)  # 使用 Python 对象的内存地址作为唯一 ID
+        doc_id = doc.get("event_id", id(doc))  # 🔥 优先使用 event_id，回退到 id()
         if doc_id not in doc_map:
             doc_map[doc_id] = doc
         doc_rrf_scores[doc_id] = doc_rrf_scores.get(doc_id, 0.0) + 1.0 / (k + rank)
     
     # 处理 BM25 检索结果
     for rank, (doc, score) in enumerate(bm25_results, start=1):
-        doc_id = id(doc)
+        doc_id = doc.get("event_id", id(doc))  # 🔥 优先使用 event_id，回退到 id()
         if doc_id not in doc_map:
             doc_map[doc_id] = doc
         doc_rrf_scores[doc_id] = doc_rrf_scores.get(doc_id, 0.0) + 1.0 / (k + rank)
@@ -299,14 +300,16 @@ def multi_rrf_fusion(
     if len(results_list) == 1:
         return results_list[0]
     
-    # 使用文档的内存地址作为唯一标识
-    doc_rrf_scores = {}  # {doc_id: rrf_score}
-    doc_map = {}         # {doc_id: doc}
+    # 🔥 修复：使用 event_id 作为唯一标识，而不是 Python 内存地址
+    # 原因：BM25 和 Embedding 索引分别加载 JSON，创建了不同的 Python 对象
+    # 即使内容相同，id() 也会不同，导致无法去重
+    doc_rrf_scores = {}  # {event_id: rrf_score}
+    doc_map = {}         # {event_id: doc}
     
     # 遍历每个查询的检索结果
     for query_results in results_list:
         for rank, (doc, score) in enumerate(query_results, start=1):
-            doc_id = id(doc)
+            doc_id = doc.get("event_id", id(doc))  # 🔥 优先使用 event_id，回退到 id()
             if doc_id not in doc_map:
                 doc_map[doc_id] = doc
             # 累加 RRF 分数
@@ -814,9 +817,11 @@ async def agentic_retrieval(
     # ========== 合并：确保总共 40 个文档 ==========
     print(f"  [Merge] Combining Round 1 and Round 2 to ensure 40 documents...")
     
-    # 去重：使用文档 ID 去重
-    round1_ids = {id(doc) for doc, _ in round1_top20}
-    round2_unique = [(doc, score) for doc, score in round2_results if id(doc) not in round1_ids]
+    # 🔥 修复：使用 event_id 去重，而不是 Python 内存地址
+    # 原因：BM25 和 Embedding 索引分别加载 JSON，创建了不同的 Python 对象
+    round1_ids = {doc.get("event_id", id(doc)) for doc, _ in round1_top20}
+    round2_unique = [(doc, score) for doc, score in round2_results 
+                     if doc.get("event_id", id(doc)) not in round1_ids]
     
     # 合并：Round1 Top20 + Round2 去重后的文档（确保总数=40）
     combined_results = round1_top20.copy()  # 先加入 Round1 的 20 个
