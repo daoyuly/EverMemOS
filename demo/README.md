@@ -20,32 +20,145 @@ The system supports **Chinese and English** language modes with fully automatic 
 
 > 💡 **Tip**: Extraction and chat languages must match, otherwise Profile files won't be found
 
-## 📂 Contents
+## 📂 Directory Structure
 
-### Core Demo Scripts
+```
+demo/
+├── chat_with_memory.py          # 🎯 Main: Interactive chat with memory
+├── extract_memory.py            # 🎯 Main: Memory extraction from conversations
+├── simple_demo.py               # 🎯 Main: Quick start example
+│
+├── config/                      # Configuration module
+│   ├── __init__.py
+│   └── memory_config.py        # Shared configuration classes
+│
+├── utils/                       # Utility module
+│   ├── __init__.py
+│   ├── memory_utils.py         # Shared utility functions
+│   └── simple_memory_manager.py # Simple memory manager
+│
+├── ui/                          # UI module
+│   ├── __init__.py
+│   └── i18n_texts.py           # Internationalization texts
+│
+├── chat/                        # Chat system components
+│   ├── __init__.py
+│   ├── orchestrator.py         # Chat application orchestrator
+│   ├── session.py              # Session management
+│   ├── ui.py                   # User interface
+│   └── selectors.py            # Language/scenario/group selectors
+│
+├── extract/                     # Memory extraction components
+│   ├── __init__.py
+│   ├── extractor.py            # Memory extraction logic
+│   └── validator.py            # Result validation
+│
+├── chat_history/                # 📁 Output: Chat conversation logs (auto-generated)
+├── memcell_outputs/             # 📁 Output: Extracted memories (auto-generated)
+│
+├── README.md                    # 📖 Documentation (English)
+└── README_zh.md                 # 📖 Documentation (Chinese)
+```
 
-- **`extract_memory.py`** - Memory extraction from conversation data
-  - Processes conversation files from the `data/` directory
-  - Extracts MemCells and generates user profiles
-  - Saves results to configured database (MongoDB) and local outputs
+## 🎯 Core Scripts
 
-- **`chat_with_memory.py`** - Interactive chat with memory-enhanced AI
-  - Command-line interface for conversing with AI agents
-  - Leverages extracted memories for context-aware responses
-  - Demonstrates end-to-end memory retrieval and usage
+### 1. `simple_demo.py` - Quick Start Example ⭐
+
+**The simplest way to experience EverMemOS!** Just 67 lines of code demonstrating the complete memory workflow.
+
+**What it demonstrates:**
+- 💾 **Store**: Save conversation messages via HTTP API
+- ⏳ **Index**: Wait for data to be indexed (MongoDB, Elasticsearch, Milvus)
+- 🔍 **Search**: Retrieve relevant memories with natural language queries
+
+**Code example:**
+```python
+from demo.simple_memory_manager import SimpleMemoryManager
+
+# Create memory manager
+memory = SimpleMemoryManager()
+
+# Store conversations
+await memory.store("I love playing soccer, often go to the field on weekends")
+await memory.store("Soccer is a great sport! Which team do you like?", sender="Assistant")
+await memory.store("I love Barcelona the most, Messi is my idol")
+
+# Wait for indexing
+await memory.wait_for_index(seconds=10)
+
+# Search memories
+await memory.search("What sports does the user like?")
+await memory.search("What is the user's favorite team?")
+```
+
+**How to run:**
+
+⚠️ **Important**: You must start the API server first!
+
+```bash
+# Terminal 1: Start the API server
+uv run python src/bootstrap.py start_server.py
+
+# Terminal 2: Run the simple demo
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+**Why this demo?**
+- ✅ Minimal code - understand core concepts in seconds
+- ✅ Complete workflow - storage → indexing → retrieval
+- ✅ Friendly output - explanations for every step
+- ✅ Real HTTP API - uses the same API as production
+
+**Dependencies**: `utils/simple_memory_manager.py` (HTTP API wrapper)
+
+### 2. `extract_memory.py` - Memory Extraction
+- Processes conversation files from the `data/` directory
+- Extracts MemCells and generates user profiles
+- Saves results to configured database (MongoDB) and local outputs
+- **Dependencies**: `extract/` module, `memory_config.py`, `memory_utils.py`
+
+### 3. `chat_with_memory.py` - Memory-Enhanced Chat
+- Command-line interface for conversing with AI agents
+- Leverages extracted memories for context-aware responses
+- Demonstrates end-to-end memory retrieval and usage
+- **Dependencies**: `chat/` module, `memory_config.py`, `memory_utils.py`, `i18n_texts.py`
+
+## 📦 Supporting Modules
 
 ### Configuration Files
+- **`config/memory_config.py`** - Shared configuration for extraction and chat
+- **`utils/memory_utils.py`** - Common utility functions (MongoDB, serialization)
+- **`ui/i18n_texts.py`** - Bilingual text resources (Chinese/English)
 
-- **`memory_config.py`** - Memory system configuration
-- **`memory_utils.py`** - Utility functions for memory operations
-- **`i18n_texts.py`** - Internationalization text resources
-
-### Output Directory
-
-- **`chat_history/`** - Saved chat conversation logs
-- **`memcell_outputs/`** - Extracted MemCell outputs (auto-generated)
+### Modular Components
+- **`chat/`** - Chat system implementation (orchestrator, session, UI, selectors)
+- **`extract/`** - Memory extraction implementation (extractor, validator)
 
 ## 🚀 Quick Start
+
+### Option A: Super Simple Mode (Recommended for Beginners) ⭐
+
+The fastest way to experience EverMemOS! Just 2 terminals:
+
+```bash
+# Terminal 1: Start the API server (required)
+uv run python src/bootstrap.py start_server.py
+
+# Terminal 2: Run the simple demo
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+**What happens:**
+1. 📝 Stores 4 conversation messages
+2. ⏳ Waits 10 seconds for indexing (MongoDB → Elasticsearch → Milvus)
+3. 🔍 Searches memories with 3 different queries
+4. 📊 Shows results with relevance scores and explanations
+
+**Note**: The API server (`start_server.py`) must be running in a separate terminal for the demo to work.
+
+---
+
+### Option B: Full Feature Mode
 
 ### Step 1: Configure Language and Scenario
 
@@ -56,9 +169,8 @@ Edit `extract_memory.py` and use the default configuration:
 ```python
 # 💡 Use sample data (default):
 EXTRACT_CONFIG = ExtractModeConfig(
-    scenario_type=ScenarioType.GROUP_CHAT,  # Scenario: GROUP_CHAT or ASSISTANT
-    language="zh",  # 🌏 Language: zh (Chinese) or en (English)
-    enable_profile_extraction=True,
+    scenario_type=ScenarioType.GROUP_CHAT,  # GROUP_CHAT or ASSISTANT
+    language="zh",  # zh or en
 )
 ```
 
@@ -83,11 +195,9 @@ Uncomment and modify the custom data configuration in `extract_memory.py`:
 EXTRACT_CONFIG = ExtractModeConfig(
     scenario_type=ScenarioType.GROUP_CHAT,
     language="zh",
-    data_file=Path("/path/to/your/data.json"),  # 🔧 Specify your data file path
-    output_dir=Path(__file__).parent / "memcell_outputs",  # 🔧 Output directory (optional)
-    group_id="my_custom_group",  # 🔧 Group ID (optional)
-    group_name="My Custom Group",  # 🔧 Group name (optional)
-    enable_profile_extraction=True,
+    data_file=Path("/path/to/your/data.json"),
+    group_id="my_custom_group",  # optional
+    group_name="My Custom Group",  # optional
 )
 ```
 
@@ -98,9 +208,12 @@ EXTRACT_CONFIG = ExtractModeConfig(
 Run the extraction script to extract memories from conversation data:
 
 ```bash
+# Recommended: Use uv (from project root)
+uv run python src/bootstrap.py demo/extract_memory.py
+
+# Alternative: Direct execution (from demo directory)
 cd demo
 python extract_memory.py
-# Or with uv: uv run python src/bootstrap.py demo/extract_memory.py
 ```
 
 The system will automatically:
@@ -114,9 +227,12 @@ The system will automatically:
 Run the chat script to start conversing with AI:
 
 ```bash
+# Recommended: Use uv (from project root)
+uv run python src/bootstrap.py demo/chat_with_memory.py
+
+# Alternative: Direct execution (from demo directory)
 cd demo
 python chat_with_memory.py
-# Or with uv: uv run python src/bootstrap.py demo/chat_with_memory.py
 ```
 
 **Interactive Selection**:
@@ -139,16 +255,16 @@ scenario_type=ScenarioType.GROUP_CHAT,
 language="zh",
 ```
 
-Run extraction → Start chat → Select `[1] 中文` + `[2] Group Chat Mode`
-
 **Try asking**: "What did Alex do in the emotion recognition project?"
 
 #### Case 2: English Assistant
 
 ```python
 # extract_memory.py - Modify config
-scenario_type=ScenarioType.ASSISTANT,
-language="en",
+EXTRACT_CONFIG = ExtractModeConfig(
+    scenario_type=ScenarioType.ASSISTANT,
+    language="en",
+)
 ```
 
 Run extraction → Start chat → Select `[2] English` + `[1] Assistant Mode`
@@ -203,18 +319,49 @@ During chat sessions, the following commands are supported:
 
 ### Quick Configuration (Recommended)
 
-Simply modify two parameters in `extract_memory.py`:
+All configuration is done in `extract_memory.py`. Simply modify these parameters:
 
 ```python
+from demo.config import ExtractModeConfig, ScenarioType
+
 EXTRACT_CONFIG = ExtractModeConfig(
-    scenario_type=ScenarioType.GROUP_CHAT,  # Scenario type
-    language="zh",                          # Language mode
+    scenario_type=ScenarioType.ASSISTANT,  # Scenario type
+    language="zh",  # Language: zh or en
+    
+    # Optional config
+    data_file=Path("/path/to/your/data.json"),  # Custom data file
+    group_id="my_group",  # Group ID
+    enable_profile_extraction=True,  # Enable profile extraction
+)
+```
+
+**🌏 Language Parameter**
+
+The `language` parameter controls the prompt language and data source:
+- `language="zh"` → Uses Chinese prompts, auto-loads `data/xxx_zh.json`
+- `language="en"` → Uses English prompts, auto-loads `data/xxx_en.json`
+
+> 💡 **Best Practice**: Match your language with your data language. For Chinese conversations, use `"zh"`. For English conversations, use `"en"`.
+
+**Example Configurations:**
+
+```python
+# Example 1: Chinese data
+EXTRACT_CONFIG = ExtractModeConfig(
+    scenario_type=ScenarioType.GROUP_CHAT,
+    language="zh",
+)
+
+# Example 2: English data
+EXTRACT_CONFIG = ExtractModeConfig(
+    scenario_type=ScenarioType.ASSISTANT,
+    language="en",
 )
 ```
 
 ### Advanced Configuration
 
-Edit `memory_config.py` to customize:
+Edit `config/memory_config.py` to customize:
 - **LLM Config**: Model selection, API Key, temperature
 - **Embedding Config**: Vectorization service URL and model
 - **MongoDB Config**: Database connection settings

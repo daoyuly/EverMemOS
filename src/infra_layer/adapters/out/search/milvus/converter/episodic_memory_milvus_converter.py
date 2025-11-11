@@ -68,6 +68,7 @@ class EpisodicMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCollection
                 ),
                 "user_id": source_doc.user_id,
                 "group_id": getattr(source_doc, 'group_id', ""),
+                "participants": getattr(source_doc, 'participants', []),  # 添加 participants
                 # 时间字段 - 转换为 Unix 时间戳
                 "timestamp": timestamp,
                 # 核心内容字段
@@ -145,25 +146,26 @@ class EpisodicMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCollection
         """
         构建搜索内容
 
-        将文档中的关键文本内容组合成搜索内容字符串。
+        将文档中的关键文本内容组合成搜索内容列表，返回 JSON 字符串。
 
         Args:
             source_doc: MongoDB 的 EpisodicMemory 文档实例
 
         Returns:
-            str: 搜索内容字符串
+            str: 搜索内容 JSON 字符串（列表格式）
         """
         text_content = []
 
-        # 收集所有文本内容
-        if hasattr(source_doc, 'episode') and source_doc.episode:
-            text_content.append(source_doc.episode)
+        # 收集所有文本内容（按优先级：主题 -> 摘要 -> 内容）
+        if hasattr(source_doc, 'subject') and source_doc.subject:
+            text_content.append(source_doc.subject)
 
         if hasattr(source_doc, 'summary') and source_doc.summary:
             text_content.append(source_doc.summary)
 
-        if hasattr(source_doc, 'subject') and source_doc.subject:
-            text_content.append(source_doc.subject)
+        if hasattr(source_doc, 'episode') and source_doc.episode:
+            # episode 可能很长，只取前 500 字符
+            text_content.append(source_doc.episode[:500])
 
-        # 合并所有文本内容
-        return ' '.join(text_content)
+        # 返回 JSON 字符串列表格式，保持与 MemCell 同步逻辑一致
+        return json.dumps(text_content, ensure_ascii=False)

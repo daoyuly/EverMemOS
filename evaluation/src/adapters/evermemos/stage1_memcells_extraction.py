@@ -80,7 +80,8 @@ def raw_data_load(locomo_data_path: str) -> Dict[str, List[RawData]]:
                 key
                 for key in conversation
                 if key.startswith("session_") and not key.endswith("_date_time")
-            ]
+            ],
+            key=lambda x: int(x.replace("session_", ""))
         )
 
         print(f"   📅 Found {len(session_keys)} sessions")

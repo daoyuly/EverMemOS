@@ -11,15 +11,14 @@ from datetime import datetime
 import re, json, asyncio, uuid
 
 
-from ..prompts.zh.episode_mem_prompts import (
-# from ..prompts.en.episode_mem_prompts import (
+# 使用动态语言提示词导入（根据 MEMORY_LANGUAGE 环境变量自动选择）
+from ..prompts import (
     EPISODE_GENERATION_PROMPT,
     GROUP_EPISODE_GENERATION_PROMPT,
     DEFAULT_CUSTOM_INSTRUCTIONS,
 )
 
-# from ..prompts.zh.episode_mem_prompts import (
-    # from ..prompts.en.episode_mem_prompts import (
+# 评估专用提示词
 from ..prompts.eval.episode_mem_prompts import (
     EPISODE_GENERATION_PROMPT as EVAL_EPISODE_GENERATION_PROMPT,
     GROUP_EPISODE_GENERATION_PROMPT as EVAL_GROUP_EPISODE_GENERATION_PROMPT,

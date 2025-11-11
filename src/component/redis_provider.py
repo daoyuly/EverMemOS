@@ -277,6 +277,46 @@ class RedisProvider:
             logger.error("Redis PING失败: %s", str(e))
             return False
 
+    async def lpush(self, key: str, *values: Union[str, bytes]) -> int:
+        """
+        向列表左侧推入元素
+
+        Args:
+            key: 键名
+            values: 要推入的值列表
+
+        Returns:
+            int: 推入后列表的长度
+        """
+        if not values:
+            return 0
+
+        client = await self.get_client()
+        try:
+            return await client.lpush(key, *values)
+        except Exception as e:
+            logger.error("Redis LPUSH操作失败: key=%s, error=%s", key, str(e))
+            return 0
+
+    async def lrange(self, key: str, start: int, end: int) -> list:
+        """
+        获取列表指定范围内的元素
+
+        Args:
+            key: 键名
+            start: 起始索引
+            end: 结束索引（-1表示到列表末尾）
+
+        Returns:
+            list: 元素列表
+        """
+        client = await self.get_client()
+        try:
+            return await client.lrange(key, start, end)
+        except Exception as e:
+            logger.error("Redis LRANGE操作失败: key=%s, error=%s", key, str(e))
+            return []
+
     async def close(self):
         """关闭所有Redis连接池"""
         # 关闭所有命名客户端
