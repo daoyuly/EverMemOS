@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any, List, Optional
 import logging
 import asyncio
 
@@ -32,7 +32,10 @@ from common_utils.datetime_utils import from_iso_format, get_now_with_timezone
 from infra_layer.adapters.out.persistence.repository.memcell_raw_repository import (
     MemCellRawRepository,
 )
-from infra_layer.adapters.out.persistence.repository.group_user_profile_memory_raw_repository import (
+from infra_layer.adapters.out.persistence.document.memory.user_profile import (
+    UserProfile,
+)
+from infra_layer.adapters.out.persistence.repository.group_user_profile_memory_raw_repository import (  # noqa: E501
     GroupUserProfileMemoryRawRepository,
 )
 from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repository import (
@@ -378,12 +381,29 @@ class MemoryManager:
             query_vector_list = query_vector.tolist()  # 转换为列表格式
             logger.debug(f"查询文本向量化完成，向量维度: {len(query_vector_list)}")
 
-            # 获取 EpisodicMemoryMilvusRepository 实例
-            milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
+            # 根据 memory_sub_type 选择对应的 Milvus Repository
+            # - "semantic_memory": 使用 SemanticMemoryMilvusRepository
+            # - "event_log": 使用 EventLogMilvusRepository
+            # - 其他（episode/None）: 使用 EpisodicMemoryMilvusRepository（默认）
+            if retrieve_mem_request.memory_sub_type == "semantic_memory":
+                from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
+                    SemanticMemoryMilvusRepository,
+                )
+                milvus_repo = get_bean_by_type(SemanticMemoryMilvusRepository)
+            elif retrieve_mem_request.memory_sub_type == "event_log":
+                from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
+                    EventLogMilvusRepository,
+                )
+                milvus_repo = get_bean_by_type(EventLogMilvusRepository)
+            else:
+                milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
 
             # 处理时间范围过滤条件
             start_time_dt = None
             end_time_dt = None
+            semantic_start_dt = None
+            semantic_end_dt = None
+            current_time_dt = None
 
             if start_time is not None:
                 if isinstance(start_time, str):
@@ -401,26 +421,37 @@ class MemoryManager:
                 else:
                     end_time_dt = end_time
 
-            # 处理语义记忆时间范围
-            semantic_start_dt = None
-            semantic_end_dt = None
-            if retrieve_mem_request.semantic_start_time:
-                semantic_start_dt = datetime.strptime(retrieve_mem_request.semantic_start_time, "%Y-%m-%d")
-            if retrieve_mem_request.semantic_end_time:
-                semantic_end_dt = datetime.strptime(retrieve_mem_request.semantic_end_time, "%Y-%m-%d")
+            # 处理语义记忆时间范围（仅对 semantic_memory 有效）
+            if retrieve_mem_request.memory_sub_type == "semantic_memory":
+                if retrieve_mem_request.semantic_start_time:
+                    semantic_start_dt = datetime.strptime(retrieve_mem_request.semantic_start_time, "%Y-%m-%d")
+                if retrieve_mem_request.semantic_end_time:
+                    semantic_end_dt = datetime.strptime(retrieve_mem_request.semantic_end_time, "%Y-%m-%d")
+                if retrieve_mem_request.current_time:
+                    current_time_dt = datetime.strptime(retrieve_mem_request.current_time, "%Y-%m-%d")
 
-            # 调用 Milvus 的向量搜索
-            search_results = await milvus_repo.vector_search(
-                query_vector=query_vector_list,
-                user_id=user_id,
-                memory_sub_type=retrieve_mem_request.memory_sub_type,  # 支持按记忆子类型过滤
-                start_time=start_time_dt,
-                end_time=end_time_dt,
-                semantic_start_time=semantic_start_dt,  # 语义记忆时间过滤
-                semantic_end_time=semantic_end_dt,
-                limit=top_k,
-                score_threshold=0.0,
-            )
+            # 调用 Milvus 的向量搜索（根据记忆类型传递不同的参数）
+            if retrieve_mem_request.memory_sub_type == "semantic_memory":
+                # 语义记忆：支持时间范围和有效期过滤
+                search_results = await milvus_repo.vector_search(
+                    query_vector=query_vector_list,
+                    user_id=user_id,
+                    start_time=semantic_start_dt,
+                    end_time=semantic_end_dt,
+                    current_time=current_time_dt,
+                    limit=top_k,
+                    score_threshold=0.0,
+                )
+            else:
+                # 情景记忆和事件日志：使用 timestamp 过滤
+                search_results = await milvus_repo.vector_search(
+                    query_vector=query_vector_list,
+                    user_id=user_id,
+                    start_time=start_time_dt,
+                    end_time=end_time_dt,
+                    limit=top_k,
+                    score_threshold=0.0,
+                )
 
             logger.debug(f"Milvus向量搜索返回 {len(search_results)} 条结果")
 
@@ -509,12 +540,26 @@ class MemoryManager:
             query_vector_list = query_vector.tolist()  # 转换为列表格式
             logger.debug(f"查询文本向量化完成，向量维度: {len(query_vector_list)}")
 
-            # 获取 EpisodicMemoryMilvusRepository 实例
-            milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
+            # 根据 memory_sub_type 选择对应的 Milvus Repository
+            if retrieve_mem_request.memory_sub_type == "semantic_memory":
+                from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
+                    SemanticMemoryMilvusRepository,
+                )
+                milvus_repo = get_bean_by_type(SemanticMemoryMilvusRepository)
+            elif retrieve_mem_request.memory_sub_type == "event_log":
+                from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
+                    EventLogMilvusRepository,
+                )
+                milvus_repo = get_bean_by_type(EventLogMilvusRepository)
+            else:
+                milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
 
             # 处理时间范围过滤条件
             start_time_dt = None
             end_time_dt = None
+            semantic_start_dt = None
+            semantic_end_dt = None
+            current_time_dt = None
 
             if start_time is not None:
                 if isinstance(start_time, str):
@@ -532,16 +577,37 @@ class MemoryManager:
                 else:
                     end_time_dt = end_time
 
-            # 调用 Milvus 的向量搜索
-            search_results = await milvus_repo.vector_search(
-                query_vector=query_vector_list,
-                user_id=user_id,
-                memory_sub_type=retrieve_mem_request.memory_sub_type,  # 支持按记忆子类型过滤
-                start_time=start_time_dt,
-                end_time=end_time_dt,
-                limit=top_k,
-                score_threshold=0.0,
-            )
+            # 处理语义记忆时间范围（仅对 semantic_memory 有效）
+            if retrieve_mem_request.memory_sub_type == "semantic_memory":
+                if retrieve_mem_request.semantic_start_time:
+                    semantic_start_dt = datetime.strptime(retrieve_mem_request.semantic_start_time, "%Y-%m-%d")
+                if retrieve_mem_request.semantic_end_time:
+                    semantic_end_dt = datetime.strptime(retrieve_mem_request.semantic_end_time, "%Y-%m-%d")
+                if retrieve_mem_request.current_time:
+                    current_time_dt = datetime.strptime(retrieve_mem_request.current_time, "%Y-%m-%d")
+
+            # 调用 Milvus 的向量搜索（根据记忆类型传递不同的参数）
+            if retrieve_mem_request.memory_sub_type == "semantic_memory":
+                # 语义记忆：支持时间范围和有效期过滤
+                search_results = await milvus_repo.vector_search(
+                    query_vector=query_vector_list,
+                    user_id=user_id,
+                    start_time=semantic_start_dt,
+                    end_time=semantic_end_dt,
+                    current_time=current_time_dt,
+                    limit=top_k,
+                    score_threshold=0.0,
+                )
+            else:
+                # 情景记忆和事件日志：使用 timestamp 过滤
+                search_results = await milvus_repo.vector_search(
+                    query_vector=query_vector_list,
+                    user_id=user_id,
+                    start_time=start_time_dt,
+                    end_time=end_time_dt,
+                    limit=top_k,
+                    score_threshold=0.0,
+                )
             return search_results
         except Exception as e:
             logger.error(f"Error in get_vector_search_results: {e}")
@@ -1015,8 +1081,9 @@ class MemoryManager:
         time_range_days: int = 365,
         top_k: int = 20,
         retrieval_mode: str = "rrf",  # "embedding" | "bm25" | "rrf"
-        data_source: str = "memcell",  # "memcell" | "event_log" | "semantic_memory"
+        data_source: str = "episode",  # "episode" | "event_log" | "semantic_memory" | "profile"
         memory_scope: str = "all",  # "all" | "personal" | "group"
+        current_time: Optional[datetime] = None,  # 当前时间，用于过滤有效期内的语义记忆
     ) -> Dict[str, Any]:
         """
         轻量级记忆检索（统一使用 Milvus/ES 检索）
@@ -1024,7 +1091,7 @@ class MemoryManager:
         Args:
             query: 用户查询
             user_id: 用户ID（用于过滤）
-            group_id: 群组ID（用于过滤）
+            group_id: 群组ID（用于过滤；profile 数据源为必需）
             time_range_days: 时间范围天数
             top_k: 返回结果数量
             retrieval_mode: 检索模式
@@ -1032,50 +1099,63 @@ class MemoryManager:
                 - "bm25": 纯关键词检索（通过 ES）
                 - "rrf": RRF 融合（默认，Milvus + ES）
             data_source: 数据源
-                - "memcell": 从 episode 检索（默认）
+                - "episode": 从 episode 检索（默认）
                 - "event_log": 从 event_log 检索
                 - "semantic_memory": 从语义记忆检索
+                - "profile": 直接按 user_id + group_id 检索档案
             memory_scope: 记忆范围
-                - "all": 所有记忆（默认，personal + group）
-                - "personal": 仅个人记忆（personal_episode/personal_event_log/personal_semantic_memory）
-                - "group": 仅群组记忆（episode/event_log/semantic_memory）
+                - "all": 所有记忆（默认，个人 + 群组）
+                - "personal": 仅个人记忆（group_id 为空）
+                - "group": 仅群组记忆（group_id 不为空）
+            current_time: 当前时间，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
             
         Returns:
             Dict 包含 memories, metadata
         """
         start_time = time.time()
+
+        # 兼容旧参数名称
+        if data_source == "memcell":
+            data_source = "episode"
+
+        if data_source == "profile":
+            if not user_id or not group_id:
+                raise ValueError("检索 profile 时必须同时提供 user_id 和 group_id")
+            return await self._retrieve_profile_memories(
+                user_id=user_id,
+                group_id=group_id,
+                top_k=top_k,
+                start_time=start_time,
+            )
         
-        # 根据 data_source 和 memory_scope 确定 memory_sub_type_filter
+        # 处理 memory_scope 参数逻辑
+        # - "personal": 只传递 user_id 参数（不传 group_id）
+        # - "group": 只传递 group_id 参数，同时设置 user_id="" 来过滤群组记忆
+        # - "all": user_id 和 group_id 都传递
+        scope_user_id = user_id
+        scope_group_id = group_id
+        
         if memory_scope == "personal":
-            memory_sub_type_filter = {
-                "memcell": "personal_episode",
-                "event_log": "personal_event_log",
-                "semantic_memory": "personal_semantic_memory",
-            }.get(data_source, "personal_episode")
+            # 个人记忆：只传递 user_id，不传 group_id
+            scope_group_id = None
         elif memory_scope == "group":
-            memory_sub_type_filter = {
-                "memcell": "episode",
-                "event_log": "event_log",
-                "semantic_memory": "semantic_memory",
-            }.get(data_source, "episode")
-        else:  # "all"
-            # 使用基础类型，在检索时通过模糊匹配包含 personal 和非 personal
-            memory_sub_type_filter = {
-                "memcell": "episode",
-                "event_log": "event_log",
-                "semantic_memory": "semantic_memory",
-            }.get(data_source, "episode")
+            # 群组记忆：episode 仍需传递 user_id=""，其余数据源只看 group_id
+            if data_source == "episode":
+                scope_user_id = ""  # 空字符串表示群组 episode
+            else:
+                scope_user_id = None  # 事件日志/语义记忆等只根据 group_id 过滤
+        # "all": 保持原样，都传递
         
         return await self._retrieve_from_vector_stores(
             query=query,
-            user_id=user_id,
-            group_id=group_id,
-            memory_sub_type=memory_sub_type_filter,
+            user_id=scope_user_id,
+            group_id=scope_group_id,
             top_k=top_k,
             retrieval_mode=retrieval_mode,
             data_source=data_source,
             start_time=start_time,
             memory_scope=memory_scope,
+            current_time=current_time,
         )
     
     async def _retrieve_from_vector_stores(
@@ -1083,12 +1163,12 @@ class MemoryManager:
         query: str,
         user_id: str = None,
         group_id: str = None,
-        memory_sub_type: str = "episode",
         top_k: int = 20,
         retrieval_mode: str = "rrf",
         data_source: str = "memcell",
         start_time: float = None,
         memory_scope: str = "all",
+        current_time: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
         统一的向量存储检索方法（支持 embedding、bm25、rrf 三种模式）
@@ -1097,12 +1177,12 @@ class MemoryManager:
             query: 查询文本
             user_id: 用户ID过滤
             group_id: 群组ID过滤
-            memory_sub_type: 记忆类型过滤（episode/event_log/semantic_memory）
             top_k: 返回结果数量
             retrieval_mode: 检索模式（embedding/bm25/rrf）
-            data_source: 数据源（用于日志和返回格式）
+            data_source: 数据源（memcell/event_log/semantic_memory）
             start_time: 开始时间（用于计算耗时）
             memory_scope: 记忆范围（all/personal/group）
+            current_time: 当前时间，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
             
         Returns:
             Dict 包含 memories, metadata
@@ -1111,64 +1191,62 @@ class MemoryManager:
             start_time = time.time()
         
         try:
-            # 1. Embedding 检索（通过 Milvus）
+            # 1. Embedding 检索（通过 Milvus，根据 data_source 选择不同的 Repository）
             embedding_results = []
             embedding_count = 0
             
             if retrieval_mode in ["embedding", "rrf"]:
-                milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
+                # 根据 data_source 选择对应的 Milvus Repository
+                if data_source == "semantic_memory":
+                    from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
+                        SemanticMemoryMilvusRepository,
+                    )
+                    milvus_repo = get_bean_by_type(SemanticMemoryMilvusRepository)
+                elif data_source == "event_log":
+                    from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
+                        EventLogMilvusRepository,
+                    )
+                    milvus_repo = get_bean_by_type(EventLogMilvusRepository)
+                else:  # "episode"
+                    milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
+                
                 vectorize_service = get_vectorize_service()
                 
                 # 生成查询向量
                 query_vec = await vectorize_service.get_embedding(query)
                 
                 # 向量检索
-                # 注意：为了确保能检索到 episode（相似度可能较低），增加 limit
+                # 注意：为了确保能检索到足够的候选，增加 limit
                 retrieval_limit = max(top_k * 10, 100)  # 至少 100 条候选
                 
-                # 根据 memory_scope 确定 Milvus 过滤的 memory_sub_type
-                # - "all": 传递基础类型（episode/event_log/semantic_memory），Milvus 会模糊匹配personal和非personal
-                # - "personal"/"group": 传递具体类型（personal_episode/episode），Milvus 会精确匹配
-                milvus_memory_sub_type = memory_sub_type
+                # 根据 data_source 调用不同的 vector_search 参数
+                if data_source == "semantic_memory":
+                    # 语义记忆：支持 current_time 过滤有效期内的记忆
+                    milvus_results = await milvus_repo.vector_search(
+                        query_vector=query_vec,
+                        user_id=user_id,
+                        group_id=group_id,
+                        current_time=current_time,
+                        limit=retrieval_limit,
+                    )
+                else:
+                    # 情景记忆和事件日志
+                    milvus_results = await milvus_repo.vector_search(
+                        query_vector=query_vec,
+                        user_id=user_id,
+                        group_id=group_id,
+                        limit=retrieval_limit,
+                    )
                 
-                milvus_results = await milvus_repo.vector_search(
-                    query_vector=query_vec,
-                    user_id=user_id,
-                    group_id=group_id,
-                    memory_sub_type=milvus_memory_sub_type,
-                    limit=retrieval_limit,
-                )
-                
-                # 过滤指定类型的结果
+                # 处理 Milvus 检索结果（不再基于 user_id 是否为空进行二次过滤）
                 for result in milvus_results:
-                    result_memory_sub_type = result.get('memory_sub_type', '')
-                    
-                    # 根据 memory_scope 决定匹配策略
-                    should_include = False
-                    
-                    if memory_scope == "personal":
-                        # 精确匹配 personal 类型
-                        should_include = (result_memory_sub_type == memory_sub_type)
-                    elif memory_scope == "group":
-                        # 精确匹配非 personal 类型
-                        should_include = (result_memory_sub_type == memory_sub_type)
-                    else:  # "all"
-                        # 模糊匹配：包含 personal 和非 personal
-                        if memory_sub_type == "semantic_memory":
-                            should_include = ('semantic_memory' in result_memory_sub_type)
-                        elif memory_sub_type == "event_log":
-                            should_include = ("event_log" in result_memory_sub_type)
-                        elif memory_sub_type == "episode":
-                            should_include = ("episode" in result_memory_sub_type)
-                    
-                    if should_include:
-                        l2_distance = result.get('score', 0)
-                        cosine_sim = 1 - (l2_distance ** 2 / 2)
-                        embedding_results.append((result, cosine_sim))
+                    l2_distance = result.get('score', 0)
+                    cosine_sim = 1 - (l2_distance ** 2 / 2)
+                    embedding_results.append((result, cosine_sim))
                 
                 # 按相似度排序
                 embedding_results.sort(key=lambda x: x[1], reverse=True)
-                logger.debug(f"Milvus 检索完成: 总结果={len(milvus_results)}, 过滤后={len(embedding_results)}, memory_sub_type={memory_sub_type}")
+                logger.debug(f"Milvus 检索完成: data_source={data_source}, 结果数={len(embedding_results)}")
                 embedding_count = len(embedding_results)
             
             # 2. BM25 检索（通过 Elasticsearch）
@@ -1176,14 +1254,26 @@ class MemoryManager:
             bm25_count = 0
             
             if retrieval_mode in ["bm25", "rrf"]:
-                es_repo = get_bean_by_type(EpisodicMemoryEsRepository)
+                # 根据 data_source 选择对应的 ES Repository
+                if data_source == "semantic_memory":
+                    from infra_layer.adapters.out.search.repository.semantic_memory_es_repository import (
+                        SemanticMemoryEsRepository,
+                    )
+                    es_repo = get_bean_by_type(SemanticMemoryEsRepository)
+                elif data_source == "event_log":
+                    from infra_layer.adapters.out.search.repository.event_log_es_repository import (
+                        EventLogEsRepository,
+                    )
+                    es_repo = get_bean_by_type(EventLogEsRepository)
+                else:  # "episode"
+                    es_repo = get_bean_by_type(EpisodicMemoryEsRepository)
                 
                 # 使用 jieba 分词
                 import jieba
                 query_words = list(jieba.cut(query))
                 
                 # 调用 ES 检索
-                # 注意：为了确保能检索到 episode，增加 size
+                # 注意：为了确保能检索到足够的候选，增加 size
                 retrieval_size = max(top_k * 10, 100)  # 至少 100 条候选
                 hits = await es_repo.multi_search(
                     query=query_words,
@@ -1192,45 +1282,23 @@ class MemoryManager:
                     size=retrieval_size,
                 )
                 
-                # 过滤指定类型的结果
+                # 处理 ES 检索结果（不再基于 user_id 是否为空进行二次过滤）
                 for hit in hits:
                     source = hit.get('_source', {})
-                    result_memory_sub_type = source.get('type', '')
-                    
-                    # 根据 memory_scope 决定匹配策略
-                    should_include = False
-                    
-                    if memory_scope == "personal":
-                        # 精确匹配 personal 类型
-                        should_include = (result_memory_sub_type == memory_sub_type)
-                    elif memory_scope == "group":
-                        # 精确匹配非 personal 类型
-                        should_include = (result_memory_sub_type == memory_sub_type)
-                    else:  # "all"
-                        # 模糊匹配：包含 personal 和非 personal
-                        if memory_sub_type == "semantic_memory":
-                            should_include = ('semantic_memory' in result_memory_sub_type)
-                        elif memory_sub_type == "event_log":
-                            should_include = ("event_log" in result_memory_sub_type)
-                        elif memory_sub_type == "episode":
-                            should_include = ("episode" in result_memory_sub_type)
-                    
-                    if should_include:
-                        bm25_score = hit.get('_score', 0)
-                        result = {
-                            'score': bm25_score,
-                            'event_id': source.get('event_id', ''),
-                            'user_id': source.get('user_id', ''),
-                            'group_id': source.get('group_id', ''),
-                            'timestamp': source.get('timestamp', ''),
-                            'episode': source.get('episode', ''),
-                            'search_content': source.get('search_content', []),
-                            'metadata': source.get('extend', {}),
-                            'memory_sub_type': result_memory_sub_type,
-                        }
-                        bm25_results.append((result, bm25_score))
+                    bm25_score = hit.get('_score', 0)
+                    result = {
+                        'score': bm25_score,
+                        'event_id': source.get('event_id', ''),
+                        'user_id': source.get('user_id', ''),
+                        'group_id': source.get('group_id', ''),
+                        'timestamp': source.get('timestamp', ''),
+                        'episode': source.get('episode', ''),
+                        'search_content': source.get('search_content', []),
+                        'metadata': source.get('extend', {}),
+                    }
+                    bm25_results.append((result, bm25_score))
                 
-                logger.debug(f"ES 检索完成: 总结果={len(hits)}, 过滤后={len(bm25_results)}, memory_sub_type={memory_sub_type}")
+                logger.debug(f"ES 检索完成: data_source={data_source}, 结果数={len(bm25_results)}")
                 bm25_count = len(bm25_results)
             
             # 3. 根据模式返回结果
@@ -1245,9 +1313,9 @@ class MemoryManager:
                         'group_id': result.get('group_id', ''),
                         'timestamp': result.get('timestamp', ''),
                         'subject': result.get('metadata', {}).get('title', ''),
-                        'episode': result.get('episode', ''),
+                        'episode': result.get('episode', '') if data_source == "episode" else result.get('content', '') if data_source == "semantic_memory" else result.get('atomic_fact', ''),
                         'summary': result.get('metadata', {}).get('summary', ''),
-                        'memory_sub_type': result.get('memory_sub_type', ''),
+                        'evidence': result.get('evidence', '') if data_source == "semantic_memory" else '',
                         'metadata': result.get('metadata', {}),
                     }
                     for result, score in final_results
@@ -1302,11 +1370,20 @@ class MemoryManager:
                             'subject': '',
                             'episode': doc.get('episode', ''),
                             'summary': '',
-                            'memory_sub_type': doc.get('memory_sub_type', ''),
+                            'evidence': doc.get('evidence', ''),
                             'metadata': doc.get('metadata', {}),
                         }
                     else:
                         # 来自 Milvus 的结果（需要转换字段名）
+                        # 根据 data_source 获取正确的内容字段
+                        content_field = 'episode'  # 默认
+                        evidence_field = ''
+                        if data_source == "semantic_memory":
+                            content_field = 'content'
+                            evidence_field = doc.get('evidence', '')
+                        elif data_source == "event_log":
+                            content_field = 'atomic_fact'
+                        
                         memory = {
                             'score': rrf_score,
                             'event_id': doc.get('id', ''),  # Milvus 用 'id'
@@ -1314,9 +1391,9 @@ class MemoryManager:
                             'group_id': doc.get('group_id', ''),
                             'timestamp': doc.get('timestamp', ''),
                             'subject': doc.get('metadata', {}).get('title', '') if isinstance(doc.get('metadata'), dict) else '',
-                            'episode': doc.get('episode', ''),
+                            'episode': doc.get(content_field, ''),
                             'summary': doc.get('metadata', {}).get('summary', '') if isinstance(doc.get('metadata'), dict) else '',
-                            'memory_sub_type': doc.get('memory_sub_type', ''),
+                            'evidence': evidence_field,
                             'metadata': doc.get('metadata', {}) if isinstance(doc.get('metadata'), dict) else {},
                         }
                     memories.append(memory)
@@ -1348,6 +1425,52 @@ class MemoryManager:
                     "total_latency_ms": (time.time() - start_time) * 1000
                 }
             }
+
+    async def _retrieve_profile_memories(
+        self,
+        user_id: str,
+        group_id: str,
+        top_k: int,
+        start_time: float,
+    ) -> Dict[str, Any]:
+        """从 user_profiles 集合直接读取用户画像"""
+        doc = await UserProfile.find_one(
+            UserProfile.user_id == user_id,
+            UserProfile.group_id == group_id,
+            sort=[("version", -1)],
+        )
+
+        memories: List[Dict[str, Any]] = []
+        if doc:
+            memories.append(
+                {
+                    "user_id": doc.user_id,
+                    "group_id": doc.group_id,
+                    "profile": doc.profile_data,
+                    "scenario": doc.scenario,
+                    "confidence": doc.confidence,
+                    "version": doc.version,
+                    "cluster_ids": doc.cluster_ids,
+                    "memcell_count": doc.memcell_count,
+                    "last_updated_cluster": doc.last_updated_cluster,
+                    "updated_at": doc.updated_at.isoformat()
+                    if doc.updated_at
+                    else None,
+                }
+            )
+
+        metadata = {
+            "retrieval_mode": "direct",
+            "data_source": "profile",
+            "profile_count": len(memories),
+            "total_latency_ms": (time.time() - start_time) * 1000,
+        }
+
+        return {
+            "memories": memories[:top_k],
+            "count": len(memories[:top_k]),
+            "metadata": metadata,
+        }
     
     # --------- Agentic 检索（LLM 引导的多轮检索）---------
     @trace_logger(operation_name="agentic_layer Agentic检索")
@@ -1408,7 +1531,7 @@ class MemoryManager:
                 time_range_days=time_range_days,
                 top_k=config.round1_top_n,  # 20
                 retrieval_mode="rrf",
-                data_source="memcell",
+                data_source="episode",
             )
             
             round1_memories = round1_result.get("memories", [])
@@ -1536,7 +1659,7 @@ class MemoryManager:
                     time_range_days=time_range_days,
                     top_k=config.round2_per_query_top_n,  # 每个查询 50 条
                     retrieval_mode="rrf",
-                    data_source="memcell",
+                    data_source="episode",
                 )
                 for q in refined_queries
             ]
@@ -1639,7 +1762,7 @@ class MemoryManager:
                 time_range_days=time_range_days,
                 top_k=top_k,
                 retrieval_mode="rrf",
-                data_source="memcell",
+                data_source="episode",
             )
             
             fallback_result["metadata"]["retrieval_mode"] = "agentic_fallback"

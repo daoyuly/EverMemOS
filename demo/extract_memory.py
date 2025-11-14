@@ -75,7 +75,7 @@ async def test_v3_memorize_api():
     print()
     
     # 逐条发送消息（增加超时时间到120秒，因为LLM调用可能需要时间）
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=500.0) as client:
         for idx, message in enumerate(test_messages, 1):
             print(f"[{idx}/{len(test_messages)}] 发送消息: {message['sender']} - {message['content'][:30]}...")
             
@@ -105,7 +105,7 @@ async def test_v3_memorize_api():
                 print(f"      请确保 V3 API 服务已启动")
                 return False
             except httpx.ReadTimeout:
-                print(f"   ⚠️  超时: 处理时间超过180秒（这可能是因为历史数据过多）")
+                print(f"   ⚠️  超时: 处理时间超过300秒")
                 print(f"      建议: 跳过此消息，继续测试")
                 continue  # 跳过超时的消息，继续处理下一条
             except Exception as e:
@@ -115,7 +115,7 @@ async def test_v3_memorize_api():
                 return False
             
             # 延迟2秒，给LLM边界检测足够的时间（每次都要调用LLM判断）
-            await asyncio.sleep(2)
+            # await asyncio.sleep(2)
     
     print("\n" + "=" * 100)
     print("✅ V3 API HTTP 接口测试完成！")

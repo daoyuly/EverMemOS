@@ -1,8 +1,9 @@
 """
-个人语义记忆 ES 转换器
+语义记忆 ES 转换器
 
 负责将 MongoDB 的 PersonalSemanticMemory 文档转换为 Elasticsearch 的 EpisodicMemoryDoc 文档。
-注意：复用 EpisodicMemoryDoc，通过 type 字段区分为 personal_semantic_memory。
+注意：复用 EpisodicMemoryDoc，通过 type 字段区分为 semantic_memory。
+支持个人和群组语义记忆。
 """
 
 from typing import List
@@ -22,12 +23,13 @@ from datetime import datetime
 logger = get_logger(__name__)
 
 
-class PersonalSemanticMemoryConverter(BaseEsConverter[EpisodicMemoryDoc]):
+class SemanticMemoryConverter(BaseEsConverter[EpisodicMemoryDoc]):
     """
-    PersonalSemanticMemory ES 转换器
+    语义记忆 ES 转换器
     
     将 MongoDB 的 PersonalSemanticMemory 文档转换为 Elasticsearch 的 EpisodicMemoryDoc 文档。
-    复用 EpisodicMemoryDoc，通过 type 字段标记为 personal_semantic_memory。
+    复用 EpisodicMemoryDoc，通过 type 字段标记为 semantic_memory。
+    支持个人和群组语义记忆。
     """
 
     @classmethod
@@ -75,7 +77,7 @@ class PersonalSemanticMemoryConverter(BaseEsConverter[EpisodicMemoryDoc]):
                 # 分类和标签字段
                 group_id=source_doc.group_id,
                 participants=source_doc.participants,
-                type="personal_semantic_memory",  # 标记类型
+                type="semantic_memory",  # 标记类型（去除 personal 前缀）
                 keywords=None,
                 linked_entities=None,
                 # MongoDB 特有字段

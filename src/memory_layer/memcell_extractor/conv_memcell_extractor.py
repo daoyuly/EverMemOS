@@ -348,12 +348,22 @@ class ConvMemCellExtractor(MemCellExtractor):
 
             participants = self._extract_participant_ids(history_message_dict_list)
             # 创建 MemCell
+            # 优先使用边界检测的主题摘要；若为空，回退到最后一条新消息的文本；再不行用占位摘要
+            fallback_text = ""
+            if new_message_dict_list:
+                last_msg = new_message_dict_list[-1]
+                if isinstance(last_msg, dict):
+                    fallback_text = last_msg.get("content") or ""
+                elif isinstance(last_msg, str):
+                    fallback_text = last_msg
+            summary_text = boundary_detection_result.topic_summary or (fallback_text.strip()[:200] if fallback_text else "会话片段")
+
             memcell = MemCell(
                 event_id=str(uuid.uuid4()),
                 user_id_list=request.user_id_list,
                 original_data=history_message_dict_list,
                 timestamp=timestamp,
-                summary=boundary_detection_result.topic_summary,
+                summary=summary_text,
                 group_id=request.group_id,
                 participants=participants,  # 使用合并后的participants
                 type=self.raw_data_type,

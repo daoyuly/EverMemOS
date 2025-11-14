@@ -1,8 +1,9 @@
 """
-情景记忆 Milvus Collection 定义
+语义记忆 Milvus Collection 定义
 
-基于 MilvusCollectionWithSuffix 实现的情景记忆专用 Collection 类。
-提供了与 EpisodicMemoryMilvusRepository 兼容的 Schema 定义和索引配置。
+基于 MilvusCollectionWithSuffix 实现的语义记忆专用 Collection 类。
+提供了与 SemanticMemoryMilvusRepository 兼容的 Schema 定义和索引配置。
+支持个人语义记忆和群组语义记忆。
 """
 
 from pymilvus import DataType, FieldSchema, CollectionSchema
@@ -12,9 +13,11 @@ from core.oxm.milvus.milvus_collection_base import (
 )
 
 
-class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
+class SemanticMemoryCollection(MilvusCollectionWithSuffix):
     """
-    情景记忆 Milvus Collection
+    语义记忆 Milvus Collection
+    
+    同时支持个人语义记忆和群组语义记忆，通过 group_id 字段区分。
 
     使用方式：
         # 使用 Collection
@@ -23,7 +26,7 @@ class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
     """
 
     # Collection 基础名称
-    _COLLECTION_NAME = "episodic_memory"
+    _COLLECTION_NAME = "semantic_memory"
 
     # Collection Schema 定义
     _SCHEMA = CollectionSchema(
@@ -34,7 +37,7 @@ class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
                 is_primary=True,
                 auto_id=False,
                 max_length=100,
-                description="事件唯一标识",
+                description="语义记忆唯一标识",
             ),
             FieldSchema(
                 name="vector",
@@ -60,34 +63,52 @@ class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
                 element_type=DataType.VARCHAR,
                 max_capacity=100,
                 max_length=100,
-                description="参与者列表（用于群组记忆的用户过滤）",
+                description="相关参与者列表",
             ),
             FieldSchema(
-                name="event_type",
+                name="parent_episode_id",
                 dtype=DataType.VARCHAR,
-                max_length=50,
-                description="事件类型（如 conversation, email 等）",
+                max_length=100,
+                description="父情景记忆ID",
             ),
             FieldSchema(
-                name="timestamp", dtype=DataType.INT64, description="事件时间戳"
+                name="start_time",
+                dtype=DataType.INT64,
+                description="语义记忆开始时间戳",
             ),
             FieldSchema(
-                name="episode",
+                name="end_time",
+                dtype=DataType.INT64,
+                description="语义记忆结束时间戳",
+            ),
+            FieldSchema(
+                name="duration_days",
+                dtype=DataType.INT64,
+                description="持续天数",
+            ),
+            FieldSchema(
+                name="content",
                 dtype=DataType.VARCHAR,
-                max_length=10000,
-                description="情景描述",
+                max_length=5000,
+                description="语义记忆内容",
+            ),
+            FieldSchema(
+                name="evidence",
+                dtype=DataType.VARCHAR,
+                max_length=2000,
+                description="支持该语义记忆的证据",
             ),
             FieldSchema(
                 name="search_content",
                 dtype=DataType.VARCHAR,
                 max_length=5000,
-                description="搜索内容",
+                description="搜索内容（JSON格式）",
             ),
             FieldSchema(
                 name="metadata",
                 dtype=DataType.VARCHAR,
                 max_length=50000,
-                description="非检索用的详细信息JSON（元数据）",
+                description="详细信息JSON（元数据）",
             ),
             FieldSchema(
                 name="created_at", dtype=DataType.INT64, description="创建时间戳"
@@ -96,7 +117,7 @@ class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
                 name="updated_at", dtype=DataType.INT64, description="更新时间戳"
             ),
         ],
-        description="情景记忆向量集合",
+        description="个人语义记忆向量集合",
         enable_dynamic_field=True,
     )
 
@@ -117,6 +138,8 @@ class EpisodicMemoryCollection(MilvusCollectionWithSuffix):
             field_name="user_id", index_type="AUTOINDEX"  # 自动选择最适合的索引类型
         ),
         IndexConfig(field_name="group_id", index_type="AUTOINDEX"),
-        IndexConfig(field_name="event_type", index_type="AUTOINDEX"),
-        IndexConfig(field_name="timestamp", index_type="AUTOINDEX"),
+        IndexConfig(field_name="parent_episode_id", index_type="AUTOINDEX"),
+        IndexConfig(field_name="start_time", index_type="AUTOINDEX"),
+        IndexConfig(field_name="end_time", index_type="AUTOINDEX"),
     ]
+

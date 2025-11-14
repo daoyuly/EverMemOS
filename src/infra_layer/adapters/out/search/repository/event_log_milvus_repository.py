@@ -1,16 +1,17 @@
 """
-情景记忆 Milvus 仓库
+事件日志 Milvus 仓库
 
-基于 BaseMilvusRepository 的情景记忆专用仓库类，提供高效的向量存储和检索功能。
+基于 BaseMilvusRepository 的事件日志专用仓库类，提供高效的向量存储和检索功能。
 主要功能包括向量存储、相似性搜索、过滤查询和文档管理。
+支持个人和群组事件日志。
 """
 
 from datetime import datetime
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 import json
 from core.oxm.milvus.base_repository import BaseMilvusRepository
-from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import (
-    EpisodicMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
+    EventLogCollection,
 )
 from core.observation.logger import get_logger
 from common_utils.datetime_utils import get_now_with_timezone
@@ -19,73 +20,61 @@ from core.di.decorators import repository
 logger = get_logger(__name__)
 
 
-@repository("episodic_memory_milvus_repository", primary=False)
-class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollection]):
+@repository("event_log_milvus_repository", primary=False)
+class EventLogMilvusRepository(BaseMilvusRepository[EventLogCollection]):
     """
-    情景记忆 Milvus 仓库
+    事件日志 Milvus 仓库
 
     基于 BaseMilvusRepository 的专用仓库类，提供：
     - 高效的向量存储和检索
     - 相似性搜索和过滤功能
     - 文档创建和管理
     - 向量索引管理
+    
+    同时支持个人和群组事件日志。
     """
 
     def __init__(self):
-        """初始化情景记忆仓库"""
-        super().__init__(EpisodicMemoryCollection)
+        """初始化事件日志仓库"""
+        super().__init__(EventLogCollection)
 
     # ==================== 文档创建和管理 ====================
 
-    async def create_and_save_episodic_memory(
+    async def create_and_save_event_log(
         self,
-        event_id: str,
-        user_id: str,
+        log_id: str,
+        user_id: Optional[str],
+        atomic_fact: str,
+        parent_episode_id: str,
         timestamp: datetime,
-        episode: str,
-        search_content: List[str],
         vector: List[float],
-        user_name: Optional[str] = None,
-        title: Optional[str] = None,
-        summary: Optional[str] = None,
         group_id: Optional[str] = None,
         participants: Optional[List[str]] = None,
         event_type: Optional[str] = None,
-        keywords: Optional[List[str]] = None,
-        linked_entities: Optional[List[str]] = None,
-        subject: Optional[str] = None,
-        memcell_event_id_list: Optional[List[str]] = None,
+        search_content: Optional[List[str]] = None,
         extend: Optional[Dict[str, Any]] = None,
+        vector_model: Optional[str] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
-        parent_event_id: Optional[str] = None,
-        metadata: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        创建并保存情景记忆文档
+        创建并保存事件日志文档
 
         Args:
-            event_id: 事件唯一标识
+            log_id: 事件日志唯一标识
             user_id: 用户ID（必需）
+            atomic_fact: 原子事实内容（必需）
+            parent_episode_id: 父情景记忆ID（必需）
             timestamp: 事件发生时间（必需）
-            episode: 情景描述（必需）
-            search_content: 搜索内容列表（必需）
             vector: 文本向量（必需，维度必须为1024）
-            user_name: 用户名称
-            title: 事件标题
-            summary: 事件摘要
             group_id: 群组ID
-            participants: 参与者列表
-            event_type: 事件类型（如 conversation, email 等）
-            keywords: 关键词列表
-            linked_entities: 关联实体ID列表
-            subject: 事件标题
-            memcell_event_id_list: 记忆单元事件ID列表
+            participants: 相关参与者列表
+            event_type: 事件类型（如 Conversation, Email 等）
+            search_content: 搜索内容列表
             extend: 扩展字段
+            vector_model: 向量化模型
             created_at: 创建时间
             updated_at: 更新时间
-            parent_event_id: 父事件ID（用于关联拆分的记录）
-            metadata: 元数据JSON字符串（可选，如果不传则自动构建）
 
         Returns:
             已保存的文档信息
@@ -98,43 +87,29 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             if updated_at is None:
                 updated_at = now
 
-            # 准备元数据（如果外部没有传入则自动构建）
-            if metadata is None:
-                metadata_dict = {
-                    "user_name": user_name or "",
-                    "title": title or "",
-                    "summary": summary or "",
-                    "participants": participants or [],
-                    "keywords": keywords or [],
-                    "linked_entities": linked_entities or [],
-                    "subject": subject or "",
-                    "memcell_event_id_list": memcell_event_id_list or [],
-                    "extend": extend or {},
-                    "created_at": created_at.isoformat(),
-                    "updated_at": updated_at.isoformat(),
-                    "parent_event_id": parent_event_id or "",  # 父事件ID，用于关联拆分的记录
-                }
-                metadata_json = json.dumps(metadata_dict, ensure_ascii=False)
-            else:
-                # 使用外部传入的 metadata
-                metadata_json = metadata
-                try:
-                    metadata_dict = json.loads(metadata)
-                except:
-                    metadata_dict = {}
+            # 构建搜索内容
+            if search_content is None:
+                search_content = [atomic_fact]
+
+            # 准备元数据
+            metadata = {
+                "vector_model": vector_model or "",
+                "extend": extend or {},
+            }
 
             # 准备实体数据
             entity = {
-                "id": event_id,
+                "id": log_id,
                 "vector": vector,
-                "user_id": user_id or "",  # Milvus VARCHAR 不接受 None，转为空字符串
+                "user_id": user_id or "",
                 "group_id": group_id or "",
                 "participants": participants or [],
-                "event_type": event_type or "",
+                "parent_episode_id": parent_episode_id,
+                "event_type": event_type or "conversation",
                 "timestamp": int(timestamp.timestamp()),
-                "episode": episode,
+                "atomic_fact": atomic_fact,
                 "search_content": json.dumps(search_content, ensure_ascii=False),
-                "metadata": metadata_json,
+                "metadata": json.dumps(metadata, ensure_ascii=False),
                 "created_at": int(created_at.timestamp()),
                 "updated_at": int(updated_at.timestamp()),
             }
@@ -143,20 +118,21 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             await self.insert(entity)
 
             logger.debug(
-                "✅ 创建情景记忆文档成功: event_id=%s, user_id=%s", event_id, user_id
+                "✅ 创建事件日志文档成功: log_id=%s, user_id=%s", log_id, user_id
             )
 
             return {
-                "event_id": event_id,
+                "log_id": log_id,
                 "user_id": user_id,
+                "atomic_fact": atomic_fact,
+                "parent_episode_id": parent_episode_id,
                 "timestamp": timestamp,
-                "episode": episode,
                 "search_content": search_content,
-                "metadata": metadata_dict,
+                "metadata": metadata,
             }
 
         except Exception as e:
-            logger.error("❌ 创建情景记忆文档失败: event_id=%s, error=%s", event_id, e)
+            logger.error("❌ 创建事件日志文档失败: log_id=%s, error=%s", log_id, e)
             raise
 
     # ==================== 搜索功能 ====================
@@ -166,6 +142,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
         query_vector: List[float],
         user_id: Optional[str] = None,
         group_id: Optional[str] = None,
+        parent_episode_id: Optional[str] = None,
         event_type: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -179,7 +156,8 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             query_vector: 查询向量
             user_id: 用户ID过滤
             group_id: 群组ID过滤
-            event_type: 事件类型过滤（如 conversation, email 等）
+            parent_episode_id: 父情景记忆ID过滤
+            event_type: 事件类型过滤
             start_time: 事件时间戳开始过滤
             end_time: 事件时间戳结束过滤
             limit: 返回结果数量
@@ -194,23 +172,22 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             if user_id is not None:  # 使用 is not None 而不是 truthy 检查，支持空字符串
                 if user_id:  # 非空字符串：个人记忆
                     # 同时检查 user_id 字段和 participants 数组
-                    # 使用 OR 逻辑：user_id 匹配 或者 user_id 在 participants 中
                     user_filter = f'(user_id == "{user_id}" or array_contains(participants, "{user_id}"))'
                     filter_expr.append(user_filter)
                 else:  # 空字符串：群组记忆
                     filter_expr.append('user_id == ""')
             if group_id:
                 filter_expr.append(f'group_id == "{group_id}"')
+            if parent_episode_id:
+                filter_expr.append(f'parent_episode_id == "{parent_episode_id}"')
             if event_type:
                 filter_expr.append(f'event_type == "{event_type}"')
             if start_time:
-                filter_expr.append(f'timestamp >= {int(start_time.timestamp())}')
+                filter_expr.append(f"timestamp >= {int(start_time.timestamp())}")
             if end_time:
-                filter_expr.append(f'timestamp <= {int(end_time.timestamp())}')
+                filter_expr.append(f"timestamp <= {int(end_time.timestamp())}")
 
             filter_str = " and ".join(filter_expr) if filter_expr else None
-
-            # 获取集合
 
             # 执行搜索
             # 动态调整 ef 参数：必须 >= limit，通常设为 limit 的 1.5-2 倍
@@ -233,22 +210,30 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
                     if hit.score >= score_threshold:
                         # 解析元数据
                         metadata_json = hit.entity.get("metadata", "{}")
-                        metadata = json.loads(metadata_json) if metadata_json else {}
+                        metadata = (
+                            json.loads(metadata_json) if metadata_json else {}
+                        )
 
                         # 解析 search_content（统一为 JSON 数组格式）
                         search_content_raw = hit.entity.get("search_content", "[]")
-                        search_content = json.loads(search_content_raw) if search_content_raw else []
+                        search_content = (
+                            json.loads(search_content_raw)
+                            if search_content_raw
+                            else []
+                        )
 
+                        # 构建结果
                         result = {
                             "id": hit.entity.get("id"),
                             "score": float(hit.score),
                             "user_id": hit.entity.get("user_id"),
                             "group_id": hit.entity.get("group_id"),
+                            "parent_episode_id": hit.entity.get("parent_episode_id"),
                             "event_type": hit.entity.get("event_type"),
                             "timestamp": datetime.fromtimestamp(
                                 hit.entity.get("timestamp", 0)
                             ),
-                            "episode": hit.entity.get("episode"),
+                            "atomic_fact": hit.entity.get("atomic_fact"),
                             "search_content": search_content,
                             "metadata": metadata,
                         }
@@ -263,26 +248,56 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
 
     # ==================== 删除功能 ====================
 
-    async def delete_by_event_id(self, event_id: str) -> bool:
+    async def delete_by_id(self, log_id: str) -> bool:
         """
-        根据event_id删除情景记忆文档
+        根据log_id删除事件日志文档
 
         Args:
-            event_id: 事件唯一标识
+            log_id: 事件日志唯一标识
 
         Returns:
             删除成功返回 True，否则返回 False
         """
         try:
-            success = await self.delete_by_id(event_id)
+            success = await super().delete_by_id(log_id)
             if success:
-                logger.debug("✅ 根据event_id删除情景记忆成功: event_id=%s", event_id)
+                logger.debug("✅ 根据log_id删除事件日志成功: log_id=%s", log_id)
             return success
         except Exception as e:
             logger.error(
-                "❌ 根据event_id删除情景记忆失败: event_id=%s, error=%s", event_id, e
+                "❌ 根据log_id删除事件日志失败: log_id=%s, error=%s", log_id, e
             )
             return False
+
+    async def delete_by_parent_episode_id(self, parent_episode_id: str) -> int:
+        """
+        根据父情景记忆ID删除所有关联的事件日志
+
+        Args:
+            parent_episode_id: 父情景记忆ID
+
+        Returns:
+            删除的文档数量
+        """
+        try:
+            expr = f'parent_episode_id == "{parent_episode_id}"'
+
+            # 先查询要删除的文档数量
+            results = await self.collection.query(expr=expr, output_fields=["id"])
+            delete_count = len(results)
+
+            if delete_count > 0:
+                # 执行删除
+                await self.collection.delete(expr)
+
+            logger.debug(
+                "✅ 根据parent_episode_id删除事件日志成功: 删除了 %d 条记录", delete_count
+            )
+            return delete_count
+
+        except Exception as e:
+            logger.error("❌ 根据parent_episode_id删除事件日志失败: %s", e)
+            raise
 
     async def delete_by_filters(
         self,
@@ -292,7 +307,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
         end_time: Optional[datetime] = None,
     ) -> int:
         """
-        根据过滤条件批量删除情景记忆文档
+        根据过滤条件批量删除事件日志文档
 
         Args:
             user_id: 用户ID过滤
@@ -306,16 +321,19 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
         try:
             # 构建过滤表达式
             filter_expr = []
-            if user_id:
-                # 同时检查 user_id 字段和 participants 数组
-                user_filter = f'(user_id == "{user_id}" or array_contains(participants, "{user_id}"))'
-                filter_expr.append(user_filter)
+            if user_id is not None:  # 使用 is not None 而不是 truthy 检查，支持空字符串
+                if user_id:  # 非空字符串：个人记忆
+                    # 同时检查 user_id 字段和 participants 数组
+                    user_filter = f'(user_id == "{user_id}" or array_contains(participants, "{user_id}"))'
+                    filter_expr.append(user_filter)
+                else:  # 空字符串：群组记忆
+                    filter_expr.append('user_id == ""')
             if group_id:
                 filter_expr.append(f'group_id == "{group_id}"')
             if start_time:
-                filter_expr.append(f'timestamp >= {int(start_time.timestamp())}')
+                filter_expr.append(f"timestamp >= {int(start_time.timestamp())}")
             if end_time:
-                filter_expr.append(f'timestamp <= {int(end_time.timestamp())}')
+                filter_expr.append(f"timestamp <= {int(end_time.timestamp())}")
 
             if not filter_expr:
                 raise ValueError("至少需要提供一个过滤条件")
@@ -330,10 +348,11 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             await self.collection.delete(expr)
 
             logger.debug(
-                "✅ 根据过滤条件批量删除情景记忆成功: 删除了 %d 条记录", delete_count
+                "✅ 根据过滤条件批量删除事件日志成功: 删除了 %d 条记录", delete_count
             )
             return delete_count
 
         except Exception as e:
-            logger.error("❌ 根据过滤条件批量删除情景记忆失败: %s", e)
+            logger.error("❌ 根据过滤条件批量删除事件日志失败: %s", e)
             raise
+

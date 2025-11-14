@@ -111,7 +111,7 @@ class SimpleMemoryManager:
             "query": query,
             "user_id": "demo_user",
             "top_k": top_k,
-            "data_source": "memcell",
+            "data_source": "episode",
             "retrieval_mode": mode,
             "memory_scope": "all",
         }

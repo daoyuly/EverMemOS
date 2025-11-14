@@ -1,7 +1,8 @@
 """
-个人事件日志 Milvus 转换器
+事件日志 Milvus 转换器
 
 负责将 MongoDB 的 PersonalEventLog 文档转换为 Milvus Collection 实体。
+支持个人和群组事件日志。
 """
 
 from typing import Dict, Any
@@ -9,8 +10,8 @@ import json
 
 from core.oxm.milvus.base_converter import BaseMilvusConverter
 from core.observation.logger import get_logger
-from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import (
-    EpisodicMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
+    EventLogCollection,
 )
 from infra_layer.adapters.out.persistence.document.memory.personal_event_log import (
     PersonalEventLog as MongoPersonalEventLog,
@@ -19,12 +20,12 @@ from infra_layer.adapters.out.persistence.document.memory.personal_event_log imp
 logger = get_logger(__name__)
 
 
-class PersonalEventLogMilvusConverter(BaseMilvusConverter[EpisodicMemoryCollection]):
+class EventLogMilvusConverter(BaseMilvusConverter[EventLogCollection]):
     """
-    PersonalEventLog Milvus 转换器
+    事件日志 Milvus 转换器
     
     将 MongoDB 的 PersonalEventLog 文档转换为 Milvus Collection 实体。
-    注意：使用现有的 EpisodicMemoryCollection，通过 memory_sub_type 字段区分。
+    使用独立的 EventLogCollection，支持个人和群组事件日志。
     """
 
     @classmethod
@@ -58,17 +59,14 @@ class PersonalEventLogMilvusConverter(BaseMilvusConverter[EpisodicMemoryCollecti
                 "id": str(source_doc.id) if source_doc.id else "",
                 "user_id": source_doc.user_id,
                 "group_id": source_doc.group_id or "",
-                "participants": getattr(source_doc, 'participants', []),  # 添加 participants
-                # 时间字段
-                "timestamp": timestamp,
-                "start_time": 0,  # 事件日志没有时间范围
-                "end_time": 0,
-                # 核心内容字段 - 使用 atomic_fact
-                "episode": source_doc.atomic_fact,
-                "search_content": search_content,
-                # 分类字段 - 标记为个人事件日志
-                "memory_sub_type": "personal_event_log",
+                "participants": source_doc.participants if source_doc.participants else [],
+                "parent_episode_id": source_doc.parent_episode_id,
+                # 事件类型和时间字段
                 "event_type": source_doc.event_type or "conversation",
+                "timestamp": timestamp,
+                # 核心内容字段
+                "atomic_fact": source_doc.atomic_fact,
+                "search_content": search_content,
                 # 详细信息 JSON
                 "metadata": json.dumps(cls._build_detail(source_doc), ensure_ascii=False),
                 # 审计字段
@@ -96,10 +94,7 @@ class PersonalEventLogMilvusConverter(BaseMilvusConverter[EpisodicMemoryCollecti
     def _build_detail(cls, source_doc: MongoPersonalEventLog) -> Dict[str, Any]:
         """构建详细信息字典"""
         detail = {
-            "parent_episode_id": source_doc.parent_episode_id,
-            "participants": source_doc.participants,
             "vector_model": source_doc.vector_model,
-            "event_type": source_doc.event_type,
             "extend": source_doc.extend,
         }
         

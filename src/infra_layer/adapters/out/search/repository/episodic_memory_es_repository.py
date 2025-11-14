@@ -132,10 +132,11 @@ class EpisodicMemoryEsRepository(BaseRepository[EpisodicMemoryDoc]):
                 updated_at = now
 
             # 创建文档实例
+            normalized_user_id = user_id or ""
             doc = EpisodicMemoryDoc(
                 event_id=event_id,
                 type=event_type,
-                user_id=user_id,
+                user_id=normalized_user_id,
                 user_name=user_name or '',
                 timestamp=timestamp,
                 title=title or '',
@@ -237,14 +238,17 @@ class EpisodicMemoryEsRepository(BaseRepository[EpisodicMemoryDoc]):
 
             # 构建过滤条件
             filter_queries = []
-            if user_id:
-                # 同时检查 user_id 字段和 participants 数组
-                # 使用 bool should 查询：user_id 匹配 或者 user_id 在 participants 中
-                user_filter = Q("bool", should=[
-                    Q("term", user_id=user_id),
-                    Q("term", participants=user_id)
-                ], minimum_should_match=1)
-                filter_queries.append(user_filter)
+            if user_id is not None:  # 使用 is not None 而不是 truthy 检查，支持空字符串
+                if user_id:  # 非空字符串：个人记忆
+                    # 同时检查 user_id 字段和 participants 数组
+                    # 使用 bool should 查询：user_id 匹配 或者 user_id 在 participants 中
+                    user_filter = Q("bool", should=[
+                        Q("term", user_id=user_id),
+                        Q("term", participants=user_id)
+                    ], minimum_should_match=1)
+                    filter_queries.append(user_filter)
+                else:  # 空字符串：群组记忆
+                    filter_queries.append(Q("term", user_id=""))
             if group_id:
                 filter_queries.append(Q("term", group_id=group_id))
             if event_type:
@@ -531,18 +535,21 @@ class EpisodicMemoryEsRepository(BaseRepository[EpisodicMemoryDoc]):
         try:
             # 构建过滤条件
             filter_queries = []
-            if user_id:
-                # 同时检查 user_id 字段和 participants 数组
-                user_filter = {
-                    "bool": {
-                        "should": [
-                            {"term": {"user_id": user_id}},
-                            {"term": {"participants": user_id}}
-                        ],
-                        "minimum_should_match": 1
+            if user_id is not None:  # 使用 is not None 而不是 truthy 检查，支持空字符串
+                if user_id:  # 非空字符串：个人记忆
+                    # 同时检查 user_id 字段和 participants 数组
+                    user_filter = {
+                        "bool": {
+                            "should": [
+                                {"term": {"user_id": user_id}},
+                                {"term": {"participants": user_id}}
+                            ],
+                            "minimum_should_match": 1
+                        }
                     }
-                }
-                filter_queries.append(user_filter)
+                    filter_queries.append(user_filter)
+                else:  # 空字符串：群组记忆
+                    filter_queries.append({"term": {"user_id": ""}})
             if group_id:
                 filter_queries.append({"term": {"group_id": group_id}})
             if date_range:

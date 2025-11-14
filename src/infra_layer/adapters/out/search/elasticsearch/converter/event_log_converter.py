@@ -1,8 +1,9 @@
 """
-个人事件日志 ES 转换器
+事件日志 ES 转换器
 
 负责将 MongoDB 的 PersonalEventLog 文档转换为 Elasticsearch 的 EpisodicMemoryDoc 文档。
-注意：复用 EpisodicMemoryDoc，通过 type 字段区分为 personal_event_log。
+注意：复用 EpisodicMemoryDoc，通过 type 字段区分为 event_log。
+支持个人和群组事件日志。
 """
 
 from typing import List
@@ -21,12 +22,13 @@ from infra_layer.adapters.out.persistence.document.memory.personal_event_log imp
 logger = get_logger(__name__)
 
 
-class PersonalEventLogConverter(BaseEsConverter[EpisodicMemoryDoc]):
+class EventLogConverter(BaseEsConverter[EpisodicMemoryDoc]):
     """
-    PersonalEventLog ES 转换器
+    事件日志 ES 转换器
     
     将 MongoDB 的 PersonalEventLog 文档转换为 Elasticsearch 的 EpisodicMemoryDoc 文档。
-    复用 EpisodicMemoryDoc，通过 type 字段标记为 personal_event_log。
+    复用 EpisodicMemoryDoc，通过 type 字段标记为 event_log。
+    支持个人和群组事件日志。
     """
 
     @classmethod
@@ -63,7 +65,7 @@ class PersonalEventLogConverter(BaseEsConverter[EpisodicMemoryDoc]):
                 # 分类和标签字段
                 group_id=source_doc.group_id,
                 participants=source_doc.participants,
-                type="personal_event_log",  # 标记类型
+                type="event_log",  # 标记类型（去除 personal 前缀）
                 keywords=None,
                 linked_entities=None,
                 # MongoDB 特有字段

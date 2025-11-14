@@ -66,17 +66,17 @@ from infra_layer.adapters.out.search.elasticsearch.converter.episodic_memory_con
 from infra_layer.adapters.out.search.milvus.converter.episodic_memory_milvus_converter import (
     EpisodicMemoryMilvusConverter,
 )
-from infra_layer.adapters.out.search.elasticsearch.converter.personal_semantic_memory_converter import (
-    PersonalSemanticMemoryConverter,
+from infra_layer.adapters.out.search.elasticsearch.converter.semantic_memory_converter import (
+    SemanticMemoryConverter,
 )
-from infra_layer.adapters.out.search.milvus.converter.personal_semantic_memory_milvus_converter import (
-    PersonalSemanticMemoryMilvusConverter,
+from infra_layer.adapters.out.search.milvus.converter.semantic_memory_milvus_converter import (
+    SemanticMemoryMilvusConverter,
 )
-from infra_layer.adapters.out.search.elasticsearch.converter.personal_event_log_converter import (
-    PersonalEventLogConverter,
+from infra_layer.adapters.out.search.elasticsearch.converter.event_log_converter import (
+    EventLogConverter,
 )
-from infra_layer.adapters.out.search.milvus.converter.personal_event_log_milvus_converter import (
-    PersonalEventLogMilvusConverter,
+from infra_layer.adapters.out.search.milvus.converter.event_log_milvus_converter import (
+    EventLogMilvusConverter,
 )
 from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repository import (
     EpisodicMemoryMilvusRepository,
@@ -84,7 +84,13 @@ from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repositor
 from infra_layer.adapters.out.search.repository.episodic_memory_es_repository import (
     EpisodicMemoryEsRepository,
 )
-from biz_layer.memcell_milvus_sync import MemCellMilvusSyncService
+from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
+    SemanticMemoryMilvusRepository,
+)
+from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
+    EventLogMilvusRepository,
+)
+from biz_layer.memcell_sync import MemCellSyncService
 
 logger = get_logger(__name__)
 
@@ -498,7 +504,7 @@ async def save_memories(
             )
         else:
             # 所有通过 save_memories 保存的 episode 都是从 EpisodeMemoryExtractor 提取的个人视角 episode
-            # 群组 episode 是存储在 MemCell.episode 中，由 memcell_milvus_sync.py 同步到 Milvus
+            # 群组 episode 是存储在 MemCell.episode 中，由 memcell_sync.py 同步到 Milvus
             milvus_entity["memory_sub_type"] = "personal_episode"
             milvus_entity["start_time"] = 0
             milvus_entity["end_time"] = 0
@@ -535,8 +541,9 @@ async def save_memories(
         except Exception as e:
             logger.error(f"保存Group Profile记忆失败: {e}")
     
-    # 保存个人语义记忆到 MongoDB/Milvus/ES
+    # 保存个人语义记忆到 MongoDB（仅 MongoDB）
     semantic_memory_repo = get_bean_by_type(PersonalSemanticMemoryRawRepository)
+    saved_semantic_docs = []
     
     for sem_mem in semantic_memories:
         if not sem_mem.content or not sem_mem.embedding:
@@ -550,26 +557,24 @@ async def save_memories(
         # 转换为 PersonalSemanticMemory 文档格式并保存到 MongoDB
         doc = _convert_semantic_memory_to_doc(sem_mem, parent_doc, current_time)
         doc = await semantic_memory_repo.save(doc)
-        
-        # 保存到 ES
-        es_doc = PersonalSemanticMemoryConverter.from_mongo(doc)
-        await es_doc.save()
-        
-        # 保存到 Milvus
-        milvus_entity = PersonalSemanticMemoryMilvusConverter.from_mongo(doc)
-        vector = milvus_entity.get("vector") if isinstance(milvus_entity, dict) else None
-        
-        if not vector or (isinstance(vector, list) and len(vector) == 0):
-            logger.warning(
-                "[mem_memorize] 跳过写入Milvus：个人语义记忆向量为空，id=%s",
-                getattr(doc, 'id', None),
-            )
-        else:
-            await episodic_memory_milvus_repo.insert(milvus_entity)
-            logger.debug(f"✅ 保存 personal_semantic_memory 到 MongoDB/ES/Milvus: {doc.id}")
+        if doc:
+            saved_semantic_docs.append(doc)
+            logger.debug(f"✅ 保存 semantic_memory 到 MongoDB: {doc.id}")
     
-    # 保存个人事件日志到 MongoDB/Milvus/ES
+    # 统一同步到 Milvus/ES（通过 PersonalMemorySyncService）
+    if saved_semantic_docs:
+        from biz_layer.personal_memory_sync import PersonalMemorySyncService
+        sync_service = get_bean_by_type(PersonalMemorySyncService)
+        sync_stats = await sync_service.sync_batch_semantic_memories(
+            saved_semantic_docs,
+            sync_to_es=True,
+            sync_to_milvus=True
+        )
+        logger.info(f"✅ 同步 {sync_stats['semantic_memory']} 个语义记忆到 Milvus/ES")
+    
+    # 保存个人事件日志到 MongoDB（仅 MongoDB）
     event_log_repo = get_bean_by_type(PersonalEventLogRawRepository)
+    saved_event_log_docs = []
     
     for event_log in event_logs:
         if not event_log.atomic_fact or not event_log.fact_embeddings:
@@ -586,27 +591,24 @@ async def save_memories(
         for doc in docs:
             # 保存到 MongoDB
             doc = await event_log_repo.save(doc)
-            
-            # 保存到 ES
-            es_doc = PersonalEventLogConverter.from_mongo(doc)
-            await es_doc.save()
-            
-            # 保存到 Milvus
-            milvus_entity = PersonalEventLogMilvusConverter.from_mongo(doc)
-            vector = milvus_entity.get("vector") if isinstance(milvus_entity, dict) else None
-            
-            if not vector or (isinstance(vector, list) and len(vector) == 0):
-                logger.warning(
-                    "[mem_memorize] 跳过写入Milvus：个人事件日志向量为空，id=%s",
-                    getattr(doc, 'id', None),
-                )
-            else:
-                await episodic_memory_milvus_repo.insert(milvus_entity)
+            if doc:
+                saved_event_log_docs.append(doc)
         
-        logger.debug(f"✅ 保存 personal_event_log 到 MongoDB/ES/Milvus: {len(docs)} 条")
+        logger.debug(f"✅ 保存 event_log 到 MongoDB: {len(docs)} 条")
+    
+    # 统一同步到 Milvus/ES（通过 PersonalMemorySyncService）
+    if saved_event_log_docs:
+        from biz_layer.personal_memory_sync import PersonalMemorySyncService
+        sync_service = get_bean_by_type(PersonalMemorySyncService)
+        sync_stats = await sync_service.sync_batch_event_logs(
+            saved_event_log_docs,
+            sync_to_es=True,
+            sync_to_milvus=True
+        )
+        logger.info(f"✅ 同步 {sync_stats['event_log']} 个事件日志到 Milvus/ES")
     
     # 刷新 Milvus，确保数据立即可搜索
-    if semantic_memories or event_logs or episode_memories:
+    if episode_memories:
         await episodic_memory_milvus_repo.flush()
         logger.info("[mem_memorize] Milvus 已刷新，数据立即可搜索")
 
@@ -805,7 +807,7 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
     doc_memcell = await memcell_repo.get_by_event_id(str(memcell.event_id))
     
     if doc_memcell:
-        sync_service = get_bean_by_type(MemCellMilvusSyncService)
+        sync_service = get_bean_by_type(MemCellSyncService)
         sync_stats = await sync_service.sync_memcell(
             doc_memcell, 
             sync_to_es=True, 

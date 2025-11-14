@@ -26,7 +26,7 @@ class ChatSession:
         llm_config: LLMConfig,
         scenario_type: ScenarioType,
         retrieval_mode: str,  # "rrf" / "embedding" / "bm25"
-        data_source: str,     # "memcell" / "event_log"
+        data_source: str,     # "episode" / "event_log"
         texts: I18nTexts,
     ):
         """初始化对话会话
@@ -37,7 +37,7 @@ class ChatSession:
             llm_config: LLM 配置
             scenario_type: 场景类型
             retrieval_mode: 检索模式（rrf/embedding/bm25）
-            data_source: 数据源（memcell/event_log）
+            data_source: 数据源（episode/event_log）
             texts: 国际化文本对象
         """
         self.group_id = group_id
@@ -231,7 +231,7 @@ class ChatSession:
             "query": query,
             "user_id": "user_001",  # 与 test 保持一致
             "top_k": self.config.top_k_memories,
-            "data_source": self.data_source,  # memcell / event_log
+            "data_source": self.data_source,  # episode / event_log
             "retrieval_mode": self.retrieval_mode,  # rrf / embedding / bm25
             "memory_scope": "all",  # 检索所有记忆（个人 + 群组）
         }

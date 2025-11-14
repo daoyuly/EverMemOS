@@ -174,7 +174,7 @@ class ChatOrchestrator:
             llm_config=llm_config,
             scenario_type=scenario_type,
             retrieval_mode=retrieval_mode,
-            data_source="memcell",  # 固定使用 memcell
+            data_source="episode",  # 固定使用 episode
             texts=texts,
         )
         

@@ -72,7 +72,7 @@ class MemCell(DocumentBase, AuditBase):
     """
 
     # 核心字段（必填）
-    user_id: Indexed(str) = Field(..., description="用户ID，核心查询字段")
+    user_id: Optional[Indexed(str)] = Field(None, description="用户ID，核心查询字段。群组记忆时为None，个人记忆时为用户ID")
     timestamp: Indexed(datetime) = Field(..., description="发生时间，分片键")
     summary: str = Field(..., min_length=1, description="记忆单元摘要")
 

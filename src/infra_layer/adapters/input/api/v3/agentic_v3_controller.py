@@ -252,7 +252,7 @@ class AgenticV3Controller(BaseController):
           "time_range_days": 365,
           "top_k": 20,
           "retrieval_mode": "rrf",
-          "data_source": "memcell",
+          "data_source": "episode",
           "memory_scope": "all"
         }
         ```
@@ -268,13 +268,15 @@ class AgenticV3Controller(BaseController):
           * "embedding": 纯向量检索
           * "bm25": 纯关键词检索
         - **data_source** (可选): 数据源
-          * "memcell": 从 MemCell.episode 检索（默认）
+          * "episode": 从 MemCell.episode 检索（默认）
           * "event_log": 从 event_log.atomic_fact 检索
           * "semantic_memory": 从语义记忆检索
+          * "profile": 仅需 user_id + group_id 的档案检索（query 可空）
         - **memory_scope** (可选): 记忆范围
-          * "all": 所有记忆（默认，包含个人和群组）
-          * "personal": 仅个人记忆（personal_episode/personal_event_log/personal_semantic_memory）
-          * "group": 仅群组记忆（episode/event_log/semantic_memory）
+          * "all": 所有记忆（默认，同时使用 user_id 和 group_id 参数过滤）
+          * "personal": 仅个人记忆（只使用 user_id 参数过滤，不使用 group_id）
+          * "group": 仅群组记忆（只使用 group_id 参数过滤，不使用 user_id）
+        - **current_time** (可选): 当前时间，YYYY-MM-DD格式，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
         
         ## 返回格式：
         ```json
@@ -317,15 +319,31 @@ class AgenticV3Controller(BaseController):
             time_range_days = request_data.get("time_range_days", 365)
             top_k = request_data.get("top_k", 20)
             retrieval_mode = request_data.get("retrieval_mode", "rrf")
-            data_source = request_data.get("data_source", "memcell")
-            memory_scope = request_data.get("memory_scope", "all")  # 新增参数
+            data_source = request_data.get("data_source", "episode")
+            memory_scope = request_data.get("memory_scope", "all")
+            current_time_str = request_data.get("current_time")  # YYYY-MM-DD格式
             
-            if not query:
+            if not query and data_source != "profile":
                 raise ValueError("缺少必需参数：query")
+            if data_source == "memcell":
+                data_source = "episode"
+            if data_source == "profile":
+                if not user_id or not group_id:
+                    raise ValueError("data_source=profile 时必须同时提供 user_id 和 group_id")
+            
+            # 解析 current_time
+            from datetime import datetime
+            current_time = None
+            if current_time_str:
+                try:
+                    current_time = datetime.strptime(current_time_str, "%Y-%m-%d")
+                except ValueError as e:
+                    raise ValueError(f"current_time 格式错误，应为 YYYY-MM-DD: {e}") from e
             
             logger.info(
                 f"收到 lightweight 检索请求: query={query}, group_id={group_id}, "
-                f"mode={retrieval_mode}, source={data_source}, scope={memory_scope}, top_k={top_k}"
+                f"mode={retrieval_mode}, source={data_source}, scope={memory_scope}, "
+                f"current_time={current_time_str}, top_k={top_k}"
             )
             
             # 2. 调用 memory_manager 的 lightweight 检索
@@ -338,6 +356,7 @@ class AgenticV3Controller(BaseController):
                 retrieval_mode=retrieval_mode,
                 data_source=data_source,
                 memory_scope=memory_scope,
+                current_time=current_time,
             )
             
             # 3. 返回统一格式
