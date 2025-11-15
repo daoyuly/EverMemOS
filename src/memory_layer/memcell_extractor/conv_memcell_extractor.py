@@ -255,31 +255,38 @@ class ConvMemCellExtractor(MemCellExtractor):
             new_messages=new_text,
             time_gap_info=time_gap_info,
         )
+        for i in range(5):
+            try:
+                resp = await self.llm_provider.generate(prompt)
+                print(
+                    f"[ConversationEpisodeBuilder] Boundary response length: {len(resp)} chars"
+                )
 
-        resp = await self.llm_provider.generate(prompt)
-        print(
-            f"[ConversationEpisodeBuilder] Boundary response length: {len(resp)} chars"
-        )
-
-        # Parse JSON response from LLM boundary detection
-        json_match = re.search(r"\{[^{}]*\}", resp, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-            return BoundaryDetectionResult(
-                should_end=data.get("should_end", False),
-                should_wait=data.get("should_wait", True),
-                reasoning=data.get("reasoning", "No reason provided"),
-                confidence=data.get("confidence", 1.0),
-                topic_summary=data.get("topic_summary", ""),
-            )
-        else:
-            return BoundaryDetectionResult(
-                should_end=False,
-                should_wait=True,
-                reasoning="Failed to parse LLM response",
-                confidence=1.0,
-                topic_summary="",
-            )
+                # Parse JSON response from LLM boundary detection
+                json_match = re.search(r"\{[^{}]*\}", resp, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    return BoundaryDetectionResult(
+                        should_end=data.get("should_end", False),
+                        should_wait=data.get("should_wait", True),
+                        reasoning=data.get("reasoning", "No reason provided"),
+                        confidence=data.get("confidence", 1.0),
+                        topic_summary=data.get("topic_summary", ""),
+                    )
+                else:
+                    return BoundaryDetectionResult(
+                        should_end=False,
+                        should_wait=True,
+                        reasoning="Failed to parse LLM response",
+                        confidence=1.0,
+                        topic_summary="",
+                    )
+                break
+            except Exception as e:
+                print('retry: ', i)
+                if i == 4:
+                    raise Exception("Boundary detection failed")
+                continue
 
     async def extract_memcell(
         self,

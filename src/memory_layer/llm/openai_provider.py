@@ -116,7 +116,7 @@ class OpenAIProvider(LLMProvider):
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self.api_key}',
         }
-        max_retries = 3
+        max_retries = 5
         for retry_num in range(max_retries):
             try:
                 timeout = aiohttp.ClientTimeout(total=600)

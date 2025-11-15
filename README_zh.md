@@ -449,7 +449,7 @@ curl -X POST http://localhost:1995/api/v3/agentic/memorize \
     "scene": "group_chat"
   }'
 ```
-
+> ℹ️ `scene` 为必填字段，仅支持 `assistant` 或 `group_chat`，用于指定记忆提取策略。
 **API 功能说明**：
 
 - **`/api/v3/agentic/memorize`**: 存储单条消息记忆
