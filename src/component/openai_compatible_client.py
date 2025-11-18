@@ -23,8 +23,7 @@ logger = get_logger(__name__)
 class OpenAICompatibleClient:
     """
     OpenAI兼容API客户端。
-    该客户端作为一个外观（Facade），管理多个LLM后端适配器，
-    并根据配置提供统一的聊天完成服务。
+    该客户端作为一个外观（Facade），管理多个LLM后端适配器。
     """
 
     def __init__(self, config_provider: ConfigProvider):
@@ -78,11 +77,6 @@ class OpenAICompatibleClient:
                     adapter = GeminiAdapter(backend_config)
                 else:
                     raise ValueError(f"Unsupported provider type: {provider}")
-
-                # 自动包装审计功能（未启动审计时返回原adapter）
-                from audit.adapter_wrapper import wrap_adapter_with_audit
-
-                adapter = wrap_adapter_with_audit(adapter, backend_name=backend_name)
 
                 self._adapters[backend_name] = adapter
                 return adapter

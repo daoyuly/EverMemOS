@@ -1,24 +1,21 @@
 <div align="center">
 
-<h1>EverMemOS 🧠</h1>
+<h1>EverMemOS </h1>
 
 <p><strong>每次交流，都由理解驱动</strong> · 企业级智能记忆系统</p>
 
 <p>
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-0A9CF3?style=flat-square" />
-  <img alt="License" src="https://img.shields.io/badge/License-Apache%202.0-00BFA6?style=flat-square" />
-  <img alt="Status" src="https://img.shields.io/badge/Status-Production-00C49A?style=flat-square" />
-  <img alt="Code Size" src="https://img.shields.io/github/languages/code-size/EverMind-AI/EverMemOS?color=0097A7&style=flat-square" />
-  <a href="https://github.com/EverMind-AI/EverMemOS/releases">
-    <img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-0088CC?style=flat-square" />
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" />
+  <img alt="License" src="https://img.shields.io/badge/License-Apache%202.0-D22128?style=flat-square&logo=apache&logoColor=white" />
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-Supported-2496ED?style=flat-square&logo=docker&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Latest-009688?style=flat-square&logo=fastapi&logoColor=white" />
+  <img alt="MongoDB" src="https://img.shields.io/badge/MongoDB-7.0+-47A248?style=flat-square&logo=mongodb&logoColor=white" />
+  <img alt="Elasticsearch" src="https://img.shields.io/badge/Elasticsearch-8.x-005571?style=flat-square&logo=elasticsearch&logoColor=white" />
+  <img alt="Milvus" src="https://img.shields.io/badge/Milvus-2.4+-00A3E0?style=flat-square" />
+  <img alt="Redis" src="https://img.shields.io/badge/Redis-7.x-DC382D?style=flat-square&logo=redis&logoColor=white" />
+   <a href="https://github.com/EverMind-AI/EverMemOS/releases">
+    <img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-4A90E2?style=flat-square" />
   </a>
-<!-- 
-  <a href="https://github.com/EverMind-AI/EverMemOS/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/EverMind-AI/EverMemOS" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/EverMind-AI/EverMemOS?style=social" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/EverMind-AI/EverMemOS?style=social" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/pulls"><img alt="Pull Requests" src="https://img.shields.io/github/issues-pr/EverMind-AI/EverMemOS" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/actions"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/EverMind-AI/EverMemOS/main.yml?branch=main" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/issues"><img alt="Issues" src="https://img.shields.io/github/issues/EverMind-AI/EverMemOS" /></a> -->
 </p>
 
 <p>
@@ -155,12 +152,6 @@ EverMemOS 围绕两条主线运行：**记忆构筑**与**记忆感知**。它�
 
 #### 🎯 智能检索工具
 
-- **🔎 关键词检索 (BM25)**  
-  基于词频与逆文档频率的精确匹配
-  
-- **🧭 语义检索 (MaxSim)**  
-  原子事实级别的语义相似度匹配  
-
 - **🧪 混合检索 (RRF 融合)**  
   并行执行语义与关键词检索，采用 Reciprocal Rank Fusion 算法无缝融合
 
@@ -171,9 +162,8 @@ EverMemOS 围绕两条主线运行：**记忆构筑**与**记忆感知**。它�
 #### 🤖 Agentic 智能检索
 
 - **🎓 LLM 引导的多轮召回**  
-  - **Round 1**：混合检索筛选 → Rerank精选 → LLM 判断充分性
-  - **Round 2**：对于不充分的情况，生成 2-3 个互补查询，并行检索并融合
-  - 自动识别缺失信息，主动补足检索盲区
+  对于不充分的情况，生成 2-3 个互补查询，并行检索并融合
+  自动识别缺失信息，主动补足检索盲区
 
 - **🔀 多查询并行策略**  
   当单一查询无法完整表达意图时，生成多个互补视角的查询  
@@ -230,31 +220,47 @@ memsys-opensource/
 
 - Python 3.10+
 - uv
-- [MongoDB Installation Guide](docs/usage/MONGODB_GUIDE_zh.md), Redis, Elasticsearch, Milvus (可选)
+- Docker 和 Docker Compose
 
 ### 安装步骤
 
+#### 使用 Docker 启动依赖服务 ⭐
+
+使用 Docker Compose 一键启动所有依赖服务（MongoDB、Elasticsearch、Milvus、Redis）：
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/your-org/memsys_opensource.git
 cd memsys_opensource
 
-# 2. 安装 uv（如果还没有安装）
+# 2. 启动 Docker 服务
+docker-compose up -d
+
+# 3. 验证服务状态
+docker-compose ps
+
+# 4. 安装 uv（如果还没有安装）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. 安装项目依赖
+# 5. 安装项目依赖
 uv sync
 
-# 4. 配置环境变量
+# 6. 配置环境变量
 cp env.template .env
-
 # 编辑 .env 文件，填入必要的配置
-#   - LLM_API_KEY: 默认使用 OpenRouter，请填入您的 OpenRouter API Key。
-#   - DEEPINFRA_API_KEY: 填入您的 DeepInfra API Key，用于 Embedding 和 Rerank 服务。
-#   - 其他数据库 (MongoDB/Redis/ES/Milvus) 根据您的本地或远程部署情况进行配置。
-
+#   - LLM_API_KEY: 填入您的 LLM API Key（用于记忆提取）
+#   - DEEPINFRA_API_KEY: 填入您的 DeepInfra API Key（用于 Embedding 和 Rerank）
 ```
+
+**Docker 服务说明**（宿主机端口）：
+- **MongoDB** (27017): 主数据库，存储记忆单元和画像
+- **Elasticsearch** (19200): 关键词检索引擎（BM25）
+- **Milvus** (19530): 向量数据库，语义检索
+- **Redis** (6479): 缓存服务
+
+> 💡 详细的 Docker 配置和管理，请参考 [Docker 部署指南](DOCKER_DEPLOYMENT.md)
+
+> 📖 MongoDB 详细安装指南：[MongoDB Installation Guide](docs/usage/MONGODB_GUIDE_zh.md)
 
 ---
 
@@ -262,11 +268,51 @@ cp env.template .env
 
 演示部分展示了 EverMemOS 的端到端功能。
 
+---
+
+**🚀 快速开始：简单演示（推荐）** ⭐
+
+体验 EverMemOS 最快的方式！只需 2 步就能看到记忆存储和检索的完整流程：
+
+```bash
+# 步骤 1：启动 API 服务器（终端 1）
+uv run python src/bootstrap.py start_server.py
+
+# 步骤 2：运行简单演示（终端 2）
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+**它会做什么：**
+- 存储 4 条关于运动爱好的对话消息
+- 等待 10 秒建立索引
+- 用 3 个不同的查询搜索相关记忆
+- 展示完整的工作流程和友好的说明
+
+**适合人群：** 首次使用者、快速测试、理解核心概念
+
+查看演示代码 [`demo/simple_demo.py`](demo/simple_demo.py)
+
+---
+
+我们还设置了完整的体验场景：
+
+**前置条件：启动 API 服务器**
+
+```bash
+# 终端 1：启动 API 服务器（必需）
+uv run python src/bootstrap.py start_server.py
+```
+
+> 💡 **提示**：API 服务器需要一直运行，请保持此终端打开。下面的所有操作都需要在另一个终端中进行。
+
+---
+
 **步骤 1: 提取记忆**
 
 运行记忆提取脚本，处理示例对话数据并构建记忆数据库：
 
 ```bash
+# 终端 2：运行提取脚本
 uv run python src/bootstrap.py demo/extract_memory.py
 ```
 
@@ -276,19 +322,15 @@ uv run python src/bootstrap.py demo/extract_memory.py
 - 生成用户画像并保存到 `demo/memcell_outputs/` 目录
 
 > **💡 提示**:
-> 默认情况下，脚本会提取 **助手 (ASSISTANT)** 场景的记忆。您可以选择性地提取 **群聊 (GROUP_CHAT)** 场景的记忆：
-> 1. 打开 `demo/extract_memory.py` 文件。
-> 2. 找到 `EXTRACT_CONFIG` 配置部分。
-> 3. 将 `scenario_type` 从 `ScenarioType.ASSISTANT` 修改为 `ScenarioType.GROUP_CHAT`。
-> 4. 再次运行提取脚本。
->
-> 您可以只运行一种场景，也可以两种都运行。
+> 配置非常简单！`extract_memory.py` 使用 HTTP API，只需 2 个参数即可运行。
+> 详细的配置说明和使用指南请参阅 [Demo 文档](demo/README_zh.md)。
 
 **步骤 2: 与记忆聊天**
 
 提取记忆后，启动交互式聊天演示：
 
 ```bash
+# 终端 2：运行聊天程序（确保 API 服务器仍在运行）
 uv run python src/bootstrap.py demo/chat_with_memory.py
 ```
 
@@ -306,36 +348,84 @@ uv run python src/bootstrap.py demo/chat_with_memory.py
 
 #### 📊 运行评估：性能测试
 
-评估框架提供了一种系统化的方法来衡量记忆系统的性能，基于 LoCoMo 评估数据集。
+评估框架提供了一种统一的模块化方法来对标准数据集（LoCoMo、LongMemEval、PersonaMem）上的记忆系统进行基准测试。
+
+**快速测试（冒烟测试）**：
 
 ```bash
-# 阶段 1: 记忆单元提取
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage1_memcells_extraction.py
+# 使用有限数据测试以验证一切正常
+# 默认：第一个对话，前 10 条消息，前 3 个问题
+uv run python -m evaluation.cli --dataset locomo --system evermemos --smoke
 
-# 阶段 2: 索引构建
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage2_index_building.py
+# 自定义冒烟测试：20 条消息，5 个问题
+uv run python -m evaluation.cli --dataset locomo --system evermemos \
+    --smoke --smoke-messages 20 --smoke-questions 5
 
-# 阶段 3: 记忆检索
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage3_memory_retrivel.py
+# 测试不同数据集
+uv run python -m evaluation.cli --dataset longmemeval --system evermemos --smoke
+uv run python -m evaluation.cli --dataset personamem --system evermemos --smoke
 
-# 阶段 4: 回应生成
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage4_response.py
+# 测试特定阶段（例如只测试搜索和回答阶段）
+uv run python -m evaluation.cli --dataset locomo --system evermemos \
+    --smoke --stages search answer
 
-# 阶段 5: 评估
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage5_eval.py
+# 快速查看冒烟测试结果
+cat evaluation/results/locomo-evermemos-smoke/report.txt
 ```
 
-每个脚本对应评估流水线中的一个阶段，从数据处理到性能评分。
+**完整评估**：
+
+```bash
+# 在 LoCoMo 基准上评估 EvermemOS
+uv run python -m evaluation.cli --dataset locomo --system evermemos
+
+# 在其他数据集上评估
+uv run python -m evaluation.cli --dataset longmemeval --system evermemos
+uv run python -m evaluation.cli --dataset personamem --system evermemos
+
+# 使用 --run-name 区分多次运行（用于 A/B 测试）
+uv run python -m evaluation.cli --dataset locomo --system evermemos --run-name baseline
+uv run python -m evaluation.cli --dataset locomo --system evermemos --run-name experiment1
+
+# 如果中断则从检查点恢复（自动）
+# 只需重新运行相同命令 - 它会检测并从检查点恢复
+uv run python -m evaluation.cli --dataset locomo --system evermemos
+```
+
+**查看结果**：
+
+```bash
+# 结果保存到 evaluation/results/{dataset}-{system}[-{run-name}]/
+cat evaluation/results/locomo-evermemos/report.txt          # 摘要指标
+cat evaluation/results/locomo-evermemos/eval_results.json   # 每个问题的详细结果
+cat evaluation/results/locomo-evermemos/pipeline.log        # 执行日志
+```
+
+评估流程包含 4 个阶段（添加 → 搜索 → 回答 → 评估），支持自动检查点和恢复。
 
 > **⚙️ 评估配置**:
-> 在运行评估前，您可以修改 `evaluation/locomo_evaluation/config.py` 文件来调整实验设置：
-> - **`ExperimentConfig.experiment_name`**: 修改此变量可以更改实验结果的保存目录。
-> - **`ExperimentConfig.llm_service`**: 选择要使用的 LLM 服务，并设置相应参数 (例如, `"openai"` 或 `"vllm"`)。
-> - **`ExperimentConfig.llm_config`**: 在此字典中配置所选 LLM 服务的具体参数，如模型、API 地址 (`base_url`) 和密钥 (`api_key`)。
+> - **数据准备**：需要将数据集放置在 `evaluation/data/` 中（参见 `evaluation/README.md`）
+> - **环境配置**：在 `.env` 中配置 LLM API 密钥（参见 `env.template`）
+> - **安装依赖**：运行 `uv sync --group evaluation` 安装依赖
+> - **自定义配置**：复制并修改 `evaluation/config/systems/` 或 `evaluation/config/datasets/` 中的 YAML 文件
+> - **高级用法**：参见 `evaluation/README.md` 了解检查点管理、特定阶段运行和系统对比
 
 ---
 
 #### 🔌 调用 API 接口
+
+**前置条件：启动 API 服务器**
+
+在调用 API 之前，请确保已启动 API 服务器：
+
+```bash
+# 启动 API 服务器
+uv run python src/bootstrap.py start_server.py
+```
+
+> 💡 **提示**：API 服务器需要一直运行，请保持此终端打开。下面的 API 调用需要在另一个终端中进行。
+
+---
 
 使用 V3 API 存储单条消息记忆：
 
@@ -353,6 +443,14 @@ curl -X POST http://localhost:1995/api/v3/agentic/memorize \
   }'
 ```
 
+**API 功能说明**：
+
+- **`/api/v3/agentic/memorize`**: 存储单条消息记忆
+- **`/api/v3/agentic/retrieve_lightweight`**: 轻量级记忆检索（Embedding + BM25 + RRF）
+- **`/api/v3/agentic/retrieve_agentic`**: Agentic 记忆检索（LLM 引导的多轮智能检索）
+
+更多 API 详情请参考 [Agentic V3 API 文档](docs/api_docs/agentic_v3_api_zh.md)。
+
 ---
 
 #### 📦 批量存储群聊记忆
@@ -360,14 +458,19 @@ curl -X POST http://localhost:1995/api/v3/agentic/memorize \
 EverMemOS 支持标准化的群聊数据格式（[GroupChatFormat](data_format/group_chat/group_chat_format.md)），可以使用脚本批量存储：
 
 ```bash
-# 使用脚本批量存储
+# 使用脚本批量存储（中文数据）
 uv run python src/bootstrap.py src/run_memorize.py \
-  --input data/group_chat.json \
+  --input data/group_chat_zh.json \
+  --api-url http://localhost:1995/api/v3/agentic/memorize
+
+# 或者使用英文数据
+uv run python src/bootstrap.py src/run_memorize.py \
+  --input data/group_chat_en.json \
   --api-url http://localhost:1995/api/v3/agentic/memorize
 
 # 验证文件格式
 uv run python src/bootstrap.py src/run_memorize.py \
-  --input data/group_chat.json \
+  --input data/group_chat_zh.json \
   --validate-only
 ```
 
@@ -466,8 +569,8 @@ EverMemOS 采用分层架构设计，主要包括：
 
 ### 联系方式
 
-- **GitHub Issues**: [提交问题和建议](https://github.com/your-org/memsys_opensource/issues)
-- **讨论区**: [参与讨论](https://github.com/your-org/memsys_opensource/discussions)
+- **GitHub Issues**: [提交问题和建议](https://github.com/EverMind-AI/EverMemOS/issues)
+- **讨论区**: [参与讨论](https://github.com/EverMind-AI/EverMemOS/discussions)
 - **邮箱**: []
 - **社区**: []
 

@@ -7,7 +7,8 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
-from ..prompts.zh.semantic_mem_prompts import (
+# 使用动态语言提示词导入（根据 MEMORY_LANGUAGE 环境变量自动选择）
+from ..prompts import (
     get_group_semantic_generation_prompt,
     get_semantic_generation_prompt,
 )
@@ -220,56 +221,46 @@ class SemanticMemoryExtractor(MemoryExtractor):
                 semantic_memories = []
 
                 for item in data:
-                    if isinstance(item, dict):
-                        content = item.get('content', '')
+                    
+                    content = item.get('content', '')
+                    evidence = item.get('evidence', '')  # ← 读取 evidence
 
-                        # 使用传入的start_time或LLM提供的时间
-                        item_start_time = item.get('start_time', start_time)
-                        item_end_time = item.get('end_time')
-                        item_duration_days = item.get('duration_days')
+                    # 使用传入的start_time或LLM提供的时间
+                    item_start_time = item.get('start_time', start_time)
+                    item_end_time = item.get('end_time')
+                    item_duration_days = item.get('duration_days')
 
-                        # 智能时间计算：优先使用LLM提供的时间信息
-                        if item_start_time:
-                            # 如果LLM提供了duration_days但没有end_time，计算end_time
-                            if item_duration_days and not item_end_time:
-                                item_end_time = self._calculate_end_time_from_duration(
-                                    item_start_time, item_duration_days
-                                )
-                            # 如果LLM提供了end_time但没有duration_days，计算duration_days
-                            elif item_end_time and not item_duration_days:
-                                item_duration_days = self._calculate_duration_days(
-                                    item_start_time, item_end_time
-                                )
-                            # 如果LLM都没有提供，则保持为None（不进行额外提取）
+                    # 智能时间计算：优先使用LLM提供的时间信息
+                    if item_start_time:
+                        # 如果LLM提供了duration_days但没有end_time，计算end_time
+                        if item_duration_days and not item_end_time:
+                            item_end_time = self._calculate_end_time_from_duration(
+                                item_start_time, item_duration_days
+                            )
+                        # 如果LLM提供了end_time但没有duration_days，计算duration_days
+                        elif item_end_time and not item_duration_days:
+                            item_duration_days = self._calculate_duration_days(
+                                item_start_time, item_end_time
+                            )
+                        # 如果LLM都没有提供，则保持为None（不进行额外提取）
 
-                        vs = get_vectorize_service()
-                        vec = await vs.get_embedding(content)
-                        # 创建SemanticMemoryItem对象
-                        memory_item = SemanticMemoryItem(
-                            content=content,
-                            start_time=item_start_time,
-                            end_time=item_end_time,
-                            duration_days=item_duration_days,
-                            source_episode_id=item.get(
-                                'source_episode_id', source_episode_id
-                            ),
-                            embedding=vec.tolist(),
-                        )
+                    vs = get_vectorize_service()
+                    vec = await vs.get_embedding(content)
+                    # 创建SemanticMemoryItem对象
+                    memory_item = SemanticMemoryItem(
+                        content=content,
+                        evidence=evidence,  # ← 添加 evidence 字段
+                        start_time=item_start_time,
+                        end_time=item_end_time,
+                        duration_days=item_duration_days,
+                        source_episode_id=item.get(
+                            'source_episode_id', source_episode_id
+                        ),
+                        embedding=vec.tolist(),
+                    )
 
-                        semantic_memories.append(memory_item)
-                    elif isinstance(item, str):
-                        # 兼容旧格式，只有字符串内容
-                        content = item
-
-                        # 创建SemanticMemoryItem对象，不进行额外的时间提取
-                        memory_item = SemanticMemoryItem(
-                            content=content,
-                            start_time=start_time,
-                            end_time=None,
-                            duration_days=None,
-                            source_episode_id=source_episode_id,
-                        )
-                        semantic_memories.append(memory_item)
+                    semantic_memories.append(memory_item)
+                    
 
                 return semantic_memories
             else:

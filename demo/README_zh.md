@@ -20,31 +20,145 @@
 
 > 💡 **提示**：提取和对话的语言必须一致，否则找不到 Profile 文件
 
-## 📂 内容
+## 📂 目录结构
 
-### 核心演示脚本
+```
+demo/
+├── chat_with_memory.py          # 🎯 核心：记忆增强对话
+├── extract_memory.py            # 🎯 核心：对话记忆提取
+├── simple_demo.py               # 🎯 核心：快速入门示例
+│
+├── config/                      # 配置模块
+│   ├── __init__.py
+│   └── memory_config.py        # 共享配置类
+│
+├── utils/                       # 工具模块
+│   ├── __init__.py
+│   ├── memory_utils.py         # 共享工具函数
+│   └── simple_memory_manager.py # 简单记忆管理器
+│
+├── ui/                          # UI 模块
+│   ├── __init__.py
+│   └── i18n_texts.py           # 国际化文本
+│
+├── chat/                        # 聊天系统组件
+│   ├── __init__.py
+│   ├── orchestrator.py         # 聊天应用编排器
+│   ├── session.py              # 会话管理
+│   ├── ui.py                   # 用户界面
+│   └── selectors.py            # 语言/场景/群组选择器
+│
+├── extract/                     # 记忆提取组件
+│   ├── __init__.py
+│   ├── extractor.py            # 记忆提取逻辑
+│   └── validator.py            # 结果验证
+│
+├── chat_history/                # 📁 输出：对话记录（自动生成）
+├── memcell_outputs/             # 📁 输出：提取的记忆（自动生成）
+│
+├── README.md                    # 📖 文档（英文）
+└── README_zh.md                 # 📖 文档（中文）
+```
 
-- **`extract_memory.py`** - 从对话数据中提取记忆
-  - 处理 `data/` 目录中的对话文件
-  - 提取记忆单元（MemCells）并生成用户画像
-  - 将结果保存到配置的数据库（MongoDB）和本地输出
+## 🎯 核心脚本
 
-- **`chat_with_memory.py`** - 与记忆增强 AI 进行交互式对话
-  - 用于与 AI 智能体对话的命令行界面
-  - 利用提取的记忆进行上下文感知的回应
-  - 演示端到端的记忆检索和使用
+### 1. `simple_demo.py` - 快速入门示例 ⭐
+
+**体验 EverMemOS 最简单的方式！** 只需 67 行代码就能演示完整的记忆工作流程。
+
+**演示内容：**
+- 💾 **存储**：通过 HTTP API 保存对话消息
+- ⏳ **索引**：等待数据被索引（MongoDB、Elasticsearch、Milvus）
+- 🔍 **搜索**：用自然语言查询检索相关记忆
+
+**代码示例：**
+```python
+from demo.simple_memory_manager import SimpleMemoryManager
+
+# 创建记忆管理器
+memory = SimpleMemoryManager()
+
+# 存储对话
+await memory.store("我喜欢踢足球，周末经常去球场")
+await memory.store("足球是很好的运动！你最喜欢哪个球队？", sender="助手")
+await memory.store("我最喜欢巴塞罗那队，梅西是我的偶像")
+
+# 等待索引构建
+await memory.wait_for_index(seconds=10)
+
+# 搜索记忆
+await memory.search("用户喜欢什么运动？")
+await memory.search("用户最喜欢的球队是什么？")
+```
+
+**运行方式：**
+
+⚠️ **重要**：必须先启动 API 服务器！
+
+```bash
+# 终端 1：启动 API 服务器
+uv run python src/bootstrap.py start_server.py
+
+# 终端 2：运行简单演示
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+**为什么选择这个演示？**
+- ✅ 代码极简 - 几秒钟就能理解核心概念
+- ✅ 完整工作流 - 存储 → 索引 → 检索
+- ✅ 友好输出 - 每一步都有说明
+- ✅ 真实 HTTP API - 使用与生产环境相同的 API
+
+**依赖**: `utils/simple_memory_manager.py`（HTTP API 封装器）
+
+### 2. `extract_memory.py` - 记忆提取
+- 处理 `data/` 目录中的对话文件
+- 提取记忆单元（MemCells）并生成用户画像
+- 将结果保存到配置的数据库（MongoDB）和本地输出
+- **依赖**: `extract/` 模块, `memory_config.py`, `memory_utils.py`
+
+### 3. `chat_with_memory.py` - 记忆增强对话
+- 用于与 AI 智能体对话的命令行界面
+- 利用提取的记忆进行上下文感知的回应
+- 演示端到端的记忆检索和使用
+- **依赖**: `chat/` 模块, `memory_config.py`, `memory_utils.py`, `i18n_texts.py`
+
+## 📦 支持模块
 
 ### 配置文件
+- **`config/memory_config.py`** - 提取和对话的共享配置
+- **`utils/memory_utils.py`** - 通用工具函数（MongoDB、序列化）
+- **`ui/i18n_texts.py`** - 双语文本资源（中文/英文）
 
-- **`memory_config.py`** - 记忆系统配置
-- **`memory_utils.py`** - 记忆操作的工具函数
-
-### 输出目录
-
-- **`chat_history/`** - 保存的聊天对话记录（自动生成）
-- **`memcell_outputs/`** - 提取的 MemCell 输出（自动生成）
+### 模块化组件
+- **`chat/`** - 聊天系统实现（编排器、会话、界面、选择器）
+- **`extract/`** - 记忆提取实现（提取器、验证器）
 
 ## 🚀 快速开始
+
+### 方式 A：超级简单模式（推荐新手）⭐
+
+体验 EverMemOS 最快的方式！只需 2 个终端：
+
+```bash
+# 终端 1：启动 API 服务器（必需）
+uv run python src/bootstrap.py start_server.py
+
+# 终端 2：运行简单演示
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+**发生了什么：**
+1. 📝 存储 4 条对话消息
+2. ⏳ 等待 10 秒建立索引（MongoDB → Elasticsearch → Milvus）
+3. 🔍 用 3 个不同的查询搜索记忆
+4. 📊 显示结果（相关度分数和说明）
+
+**注意**：必须在单独的终端中运行 API 服务器（`start_server.py`），演示才能正常工作。
+
+---
+
+### 方式 B：完整功能模式
 
 ### 步骤 1：配置语言和场景
 
@@ -55,9 +169,8 @@
 ```python
 # 💡 使用示例数据（默认）：
 EXTRACT_CONFIG = ExtractModeConfig(
-    scenario_type=ScenarioType.GROUP_CHAT,  # 场景：GROUP_CHAT（群聊）或 ASSISTANT（助手）
-    language="zh",  # 🌏 语言：zh（中文）或 en（英文）
-    enable_profile_extraction=True,
+    scenario_type=ScenarioType.GROUP_CHAT,  # GROUP_CHAT 或 ASSISTANT
+    language="zh",  # zh 或 en
 )
 ```
 
@@ -82,11 +195,9 @@ EXTRACT_CONFIG = ExtractModeConfig(
 EXTRACT_CONFIG = ExtractModeConfig(
     scenario_type=ScenarioType.GROUP_CHAT,
     language="zh",
-    data_file=Path("/path/to/your/data.json"),  # 🔧 指定您的数据文件路径
-    output_dir=Path(__file__).parent / "memcell_outputs",  # 🔧 输出目录（可选）
-    group_id="my_custom_group",  # 🔧 群组 ID（可选）
-    group_name="My Custom Group",  # 🔧 群组名称（可选）
-    enable_profile_extraction=True,
+    data_file=Path("/path/to/your/data.json"),
+    group_id="my_custom_group",  # 可选
+    group_name="My Custom Group",  # 可选
 )
 ```
 
@@ -97,9 +208,12 @@ EXTRACT_CONFIG = ExtractModeConfig(
 运行提取脚本从对话数据中提取记忆：
 
 ```bash
+# 推荐：使用 uv（从项目根目录执行）
+uv run python src/bootstrap.py demo/extract_memory.py
+
+# 备选：直接执行（从 demo 目录执行）
 cd demo
 python extract_memory.py
-# 或使用 uv: uv run python src/bootstrap.py demo/extract_memory.py
 ```
 
 系统会自动：
@@ -113,9 +227,12 @@ python extract_memory.py
 运行对话脚本开始与 AI 对话：
 
 ```bash
+# 推荐：使用 uv（从项目根目录执行）
+uv run python src/bootstrap.py demo/chat_with_memory.py
+
+# 备选：直接执行（从 demo 目录执行）
 cd demo
 python chat_with_memory.py
-# 或使用 uv: uv run python src/bootstrap.py demo/chat_with_memory.py
 ```
 
 **交互选择**：
@@ -138,16 +255,16 @@ scenario_type=ScenarioType.GROUP_CHAT,
 language="zh",
 ```
 
-运行提取 → 启动对话 → 选择 `[1] 中文` + `[2] 群聊模式`
-
 **试试问**：「Alex 在情绪识别项目中做了什么工作？」
 
 #### 场景 2：英文助手
 
 ```python
 # extract_memory.py - 修改配置
-scenario_type=ScenarioType.ASSISTANT,
-language="en",
+EXTRACT_CONFIG = ExtractModeConfig(
+    scenario_type=ScenarioType.ASSISTANT,
+    language="en",
+)
 ```
 
 运行提取 → 启动对话 → 选择 `[2] English` + `[1] Assistant Mode`
@@ -202,18 +319,49 @@ demo/memcell_outputs/
 
 ### 快速配置（推荐）
 
-只需修改 `extract_memory.py` 中的两个参数：
+所有配置都在 `extract_memory.py` 中完成。只需修改这些参数：
 
 ```python
+from demo.config import ExtractModeConfig, ScenarioType
+
 EXTRACT_CONFIG = ExtractModeConfig(
-    scenario_type=ScenarioType.GROUP_CHAT,  # 场景类型
-    language="zh",                          # 语言模式
+    scenario_type=ScenarioType.ASSISTANT,  # 场景类型
+    language="zh",  # 语言：zh 或 en
+    
+    # 可选配置
+    data_file=Path("/path/to/your/data.json"),  # 自定义数据文件
+    group_id="my_group",  # 群组 ID
+    enable_profile_extraction=True,  # 是否提取画像
+)
+```
+
+**🌏 语言参数说明**
+
+`language` 参数控制提取时使用的 Prompt 语言和数据源：
+- `language="zh"` → 使用中文 Prompt，自动加载 `data/xxx_zh.json`
+- `language="en"` → 使用英文 Prompt，自动加载 `data/xxx_en.json`
+
+> 💡 **最佳实践**：语言应与数据语言匹配。中文对话使用 `"zh"`，英文对话使用 `"en"`。
+
+**配置示例：**
+
+```python
+# 示例 1：中文数据
+EXTRACT_CONFIG = ExtractModeConfig(
+    scenario_type=ScenarioType.GROUP_CHAT,
+    language="zh",
+)
+
+# 示例 2：英文数据
+EXTRACT_CONFIG = ExtractModeConfig(
+    scenario_type=ScenarioType.ASSISTANT,
+    language="en",
 )
 ```
 
 ### 高级配置
 
-编辑 `memory_config.py` 可自定义：
+编辑 `config/memory_config.py` 可自定义：
 - **LLM 配置**：模型选择、API Key、温度参数
 - **嵌入配置**：向量化服务地址和模型
 - **MongoDB 配置**：数据库连接设置

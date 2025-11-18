@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from typing import Any, List
 import logging
+import asyncio
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import jieba
+import numpy as np
+import time
 from typing import Dict, Any
+from dataclasses import dataclass
 
 from memory_layer.types import Memory
 from biz_layer.mem_memorize import memorize
 from memory_layer.memory_manager import MemorizeRequest
 from .fetch_mem_service import get_fetch_memory_service
-# from .retrieve_mem_service import get_retrieve_mem_service
 from .dtos.memory_query import (
     FetchMemRequest,
     FetchMemResponse,
@@ -25,7 +28,7 @@ from infra_layer.adapters.out.search.repository.episodic_memory_es_repository im
 )
 from core.observation.tracing.decorators import trace_logger
 from core.nlp.stopwords_utils import filter_stopwords
-from common_utils.datetime_utils import from_iso_format
+from common_utils.datetime_utils import from_iso_format, get_now_with_timezone
 from infra_layer.adapters.out.persistence.repository.memcell_raw_repository import (
     MemCellRawRepository,
 )
@@ -37,8 +40,23 @@ from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repositor
 )
 from .vectorize_service import get_vectorize_service
 from .rerank_service import get_rerank_service
+from .retrieval_utils import lightweight_retrieval, build_bm25_index, search_with_bm25
+import os
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class EventLogCandidate:
+    """Event Log 候选对象（用于从 atomic_fact 检索）"""
+    event_id: str
+    user_id: str
+    group_id: str
+    timestamp: datetime
+    episode: str  # atomic_fact 内容
+    summary: str
+    subject: str
+    extend: dict  # 包含 embedding
 
 
 class MemoryManager:
@@ -301,10 +319,11 @@ class MemoryManager:
             if end_time is not None:
                 date_range["lte"] = end_time
 
-            # 调用 multi_search 方法
+            # 调用 multi_search 方法，支持按 memory_sub_type 过滤
             search_results = await es_repo.multi_search(
                 query=query_words,
                 user_id=user_id,
+                event_type=retrieve_mem_request.memory_sub_type,  # 按记忆子类型过滤
                 size=top_k,
                 from_=0,
                 date_range=date_range,
@@ -382,14 +401,26 @@ class MemoryManager:
                 else:
                     end_time_dt = end_time
 
+            # 处理语义记忆时间范围
+            semantic_start_dt = None
+            semantic_end_dt = None
+            if retrieve_mem_request.semantic_start_time:
+                semantic_start_dt = datetime.strptime(retrieve_mem_request.semantic_start_time, "%Y-%m-%d")
+            if retrieve_mem_request.semantic_end_time:
+                semantic_end_dt = datetime.strptime(retrieve_mem_request.semantic_end_time, "%Y-%m-%d")
+
             # 调用 Milvus 的向量搜索
             search_results = await milvus_repo.vector_search(
                 query_vector=query_vector_list,
                 user_id=user_id,
+                memory_sub_type=retrieve_mem_request.memory_sub_type,  # 支持按记忆子类型过滤
                 start_time=start_time_dt,
                 end_time=end_time_dt,
+                semantic_start_time=semantic_start_dt,  # 语义记忆时间过滤
+                semantic_end_time=semantic_end_dt,
                 limit=top_k,
                 score_threshold=0.0,
+                radius=retrieve_mem_request.radius,  # 从请求对象中获取相似度阈值参数
             )
 
             logger.debug(f"Milvus向量搜索返回 {len(search_results)} 条结果")
@@ -506,10 +537,12 @@ class MemoryManager:
             search_results = await milvus_repo.vector_search(
                 query_vector=query_vector_list,
                 user_id=user_id,
+                memory_sub_type=retrieve_mem_request.memory_sub_type,  # 支持按记忆子类型过滤
                 start_time=start_time_dt,
                 end_time=end_time_dt,
                 limit=top_k,
                 score_threshold=0.0,
+                radius=retrieve_mem_request.radius,  # 从请求对象中获取相似度阈值参数
             )
             return search_results
         except Exception as e:
@@ -973,3 +1006,649 @@ class MemoryManager:
             len(group_data['memories']) for group_data in memories_by_group.values()
         )
         return memories, scores, importance_scores, original_data, total_count
+    
+    # --------- Lightweight 检索（Embedding + BM25 + RRF）---------
+    @trace_logger(operation_name="agentic_layer 轻量级检索")
+    async def retrieve_lightweight(
+        self,
+        query: str,
+        user_id: str = None,
+        group_id: str = None,
+        time_range_days: int = 365,
+        top_k: int = 20,
+        retrieval_mode: str = "rrf",  # "embedding" | "bm25" | "rrf"
+        data_source: str = "memcell",  # "memcell" | "event_log" | "semantic_memory"
+        memory_scope: str = "all",  # "all" | "personal" | "group"
+        radius: Optional[float] = None,  # COSINE 相似度阈值
+    ) -> Dict[str, Any]:
+        """
+        轻量级记忆检索（统一使用 Milvus/ES 检索）
+        
+        Args:
+            query: 用户查询
+            user_id: 用户ID（用于过滤）
+            group_id: 群组ID（用于过滤）
+            time_range_days: 时间范围天数
+            top_k: 返回结果数量
+            retrieval_mode: 检索模式
+                - "embedding": 纯向量检索（通过 Milvus）
+                - "bm25": 纯关键词检索（通过 ES）
+                - "rrf": RRF 融合（默认，Milvus + ES）
+            data_source: 数据源
+                - "memcell": 从 episode 检索（默认）
+                - "event_log": 从 event_log 检索
+                - "semantic_memory": 从语义记忆检索
+            memory_scope: 记忆范围
+                - "all": 所有记忆（默认，personal + group）
+                - "personal": 仅个人记忆（personal_episode/personal_event_log/personal_semantic_memory）
+                - "group": 仅群组记忆（episode/event_log/semantic_memory）
+            
+        Returns:
+            Dict 包含 memories, metadata
+        """
+        start_time = time.time()
+        
+        # 根据 data_source 和 memory_scope 确定 memory_sub_type_filter
+        if memory_scope == "personal":
+            memory_sub_type_filter = {
+                "memcell": "personal_episode",
+                "event_log": "personal_event_log",
+                "semantic_memory": "personal_semantic_memory",
+            }.get(data_source, "personal_episode")
+        elif memory_scope == "group":
+            memory_sub_type_filter = {
+                "memcell": "episode",
+                "event_log": "event_log",
+                "semantic_memory": "semantic_memory",
+            }.get(data_source, "episode")
+        else:  # "all"
+            # 使用基础类型，在检索时通过模糊匹配包含 personal 和非 personal
+            memory_sub_type_filter = {
+                "memcell": "episode",
+                "event_log": "event_log",
+                "semantic_memory": "semantic_memory",
+            }.get(data_source, "episode")
+        
+        return await self._retrieve_from_vector_stores(
+            query=query,
+            user_id=user_id,
+            group_id=group_id,
+            memory_sub_type=memory_sub_type_filter,
+            top_k=top_k,
+            retrieval_mode=retrieval_mode,
+            data_source=data_source,
+            start_time=start_time,
+            memory_scope=memory_scope,
+            radius=radius,
+        )
+    
+    async def _retrieve_from_vector_stores(
+        self,
+        query: str,
+        user_id: str = None,
+        group_id: str = None,
+        memory_sub_type: str = "episode",
+        top_k: int = 20,
+        retrieval_mode: str = "rrf",
+        data_source: str = "memcell",
+        start_time: float = None,
+        memory_scope: str = "all",
+        radius: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """
+        统一的向量存储检索方法（支持 embedding、bm25、rrf 三种模式）
+        
+        Args:
+            query: 查询文本
+            user_id: 用户ID过滤
+            group_id: 群组ID过滤
+            memory_sub_type: 记忆类型过滤（episode/event_log/semantic_memory）
+            top_k: 返回结果数量
+            retrieval_mode: 检索模式（embedding/bm25/rrf）
+            data_source: 数据源（用于日志和返回格式）
+            start_time: 开始时间（用于计算耗时）
+            memory_scope: 记忆范围（all/personal/group）
+            
+        Returns:
+            Dict 包含 memories, metadata
+        """
+        if start_time is None:
+            start_time = time.time()
+        
+        try:
+            # 1. Embedding 检索（通过 Milvus）
+            embedding_results = []
+            embedding_count = 0
+            
+            if retrieval_mode in ["embedding", "rrf"]:
+                milvus_repo = get_bean_by_type(EpisodicMemoryMilvusRepository)
+                vectorize_service = get_vectorize_service()
+                
+                # 生成查询向量
+                query_vec = await vectorize_service.get_embedding(query)
+                
+                # 向量检索
+                # 注意：为了确保能检索到 episode（相似度可能较低），增加 limit
+                retrieval_limit = max(top_k * 10, 100)  # 至少 100 条候选
+                
+                # 根据 memory_scope 确定 Milvus 过滤的 memory_sub_type
+                # - "all": 传递基础类型（episode/event_log/semantic_memory），Milvus 会模糊匹配personal和非personal
+                # - "personal"/"group": 传递具体类型（personal_episode/episode），Milvus 会精确匹配
+                milvus_memory_sub_type = memory_sub_type
+                
+                milvus_results = await milvus_repo.vector_search(
+                    query_vector=query_vec,
+                    user_id=user_id,
+                    group_id=group_id,
+                    memory_sub_type=milvus_memory_sub_type,
+                    limit=retrieval_limit,
+                    radius=radius,  # 传递相似度阈值参数
+                )
+                
+                # 过滤指定类型的结果
+                for result in milvus_results:
+                    result_memory_sub_type = result.get('memory_sub_type', '')
+                    
+                    # 根据 memory_scope 决定匹配策略
+                    should_include = False
+                    
+                    if memory_scope == "personal":
+                        # 精确匹配 personal 类型
+                        should_include = (result_memory_sub_type == memory_sub_type)
+                    elif memory_scope == "group":
+                        # 精确匹配非 personal 类型
+                        should_include = (result_memory_sub_type == memory_sub_type)
+                    else:  # "all"
+                        # 模糊匹配：包含 personal 和非 personal
+                        if memory_sub_type == "semantic_memory":
+                            should_include = ('semantic_memory' in result_memory_sub_type)
+                        elif memory_sub_type == "event_log":
+                            should_include = ("event_log" in result_memory_sub_type)
+                        elif memory_sub_type == "episode":
+                            should_include = ("episode" in result_memory_sub_type)
+                    
+                    if should_include:
+                        l2_distance = result.get('score', 0)
+                        cosine_sim = 1 - (l2_distance ** 2 / 2)
+                        embedding_results.append((result, cosine_sim))
+                
+                # 按相似度排序
+                embedding_results.sort(key=lambda x: x[1], reverse=True)
+                logger.debug(f"Milvus 检索完成: 总结果={len(milvus_results)}, 过滤后={len(embedding_results)}, memory_sub_type={memory_sub_type}")
+                embedding_count = len(embedding_results)
+            
+            # 2. BM25 检索（通过 Elasticsearch）
+            bm25_results = []
+            bm25_count = 0
+            
+            if retrieval_mode in ["bm25", "rrf"]:
+                es_repo = get_bean_by_type(EpisodicMemoryEsRepository)
+                
+                # 使用 jieba 分词
+                import jieba
+                query_words = list(jieba.cut(query))
+                
+                # 调用 ES 检索
+                # 注意：为了确保能检索到 episode，增加 size
+                retrieval_size = max(top_k * 10, 100)  # 至少 100 条候选
+                hits = await es_repo.multi_search(
+                    query=query_words,
+                    user_id=user_id,
+                    group_id=group_id,
+                    size=retrieval_size,
+                )
+                
+                # 过滤指定类型的结果
+                for hit in hits:
+                    source = hit.get('_source', {})
+                    result_memory_sub_type = source.get('type', '')
+                    
+                    # 根据 memory_scope 决定匹配策略
+                    should_include = False
+                    
+                    if memory_scope == "personal":
+                        # 精确匹配 personal 类型
+                        should_include = (result_memory_sub_type == memory_sub_type)
+                    elif memory_scope == "group":
+                        # 精确匹配非 personal 类型
+                        should_include = (result_memory_sub_type == memory_sub_type)
+                    else:  # "all"
+                        # 模糊匹配：包含 personal 和非 personal
+                        if memory_sub_type == "semantic_memory":
+                            should_include = ('semantic_memory' in result_memory_sub_type)
+                        elif memory_sub_type == "event_log":
+                            should_include = ("event_log" in result_memory_sub_type)
+                        elif memory_sub_type == "episode":
+                            should_include = ("episode" in result_memory_sub_type)
+                    
+                    if should_include:
+                        bm25_score = hit.get('_score', 0)
+                        result = {
+                            'score': bm25_score,
+                            'event_id': source.get('event_id', ''),
+                            'user_id': source.get('user_id', ''),
+                            'group_id': source.get('group_id', ''),
+                            'timestamp': source.get('timestamp', ''),
+                            'episode': source.get('episode', ''),
+                            'search_content': source.get('search_content', []),
+                            'metadata': source.get('extend', {}),
+                            'memory_sub_type': result_memory_sub_type,
+                        }
+                        bm25_results.append((result, bm25_score))
+                
+                logger.debug(f"ES 检索完成: 总结果={len(hits)}, 过滤后={len(bm25_results)}, memory_sub_type={memory_sub_type}")
+                bm25_count = len(bm25_results)
+            
+            # 3. 根据模式返回结果
+            if retrieval_mode == "embedding":
+                # 纯向量检索
+                final_results = embedding_results[:top_k]
+                memories = [
+                    {
+                        'score': score,
+                        'event_id': result.get('id', ''),
+                        'user_id': result.get('user_id', ''),
+                        'group_id': result.get('group_id', ''),
+                        'timestamp': result.get('timestamp', ''),
+                        'subject': result.get('metadata', {}).get('title', ''),
+                        'episode': result.get('episode', ''),
+                        'summary': result.get('metadata', {}).get('summary', ''),
+                        'memory_sub_type': result.get('memory_sub_type', ''),
+                        'metadata': result.get('metadata', {}),
+                    }
+                    for result, score in final_results
+                ]
+                
+                metadata = {
+                    "retrieval_mode": "embedding",
+                    "data_source": data_source,
+                    "embedding_candidates": embedding_count,
+                    "final_count": len(memories),
+                    "total_latency_ms": (time.time() - start_time) * 1000
+                }
+                
+            elif retrieval_mode == "bm25":
+                # 纯 BM25 检索
+                final_results = bm25_results[:top_k]
+                memories = [result for result, score in final_results]
+                
+                metadata = {
+                    "retrieval_mode": "bm25",
+                    "data_source": data_source,
+                    "bm25_candidates": bm25_count,
+                    "final_count": len(memories),
+                    "total_latency_ms": (time.time() - start_time) * 1000
+                }
+                
+            else:  # rrf
+                # RRF 融合
+                from agentic_layer.retrieval_utils import reciprocal_rank_fusion
+                
+                fused_results = reciprocal_rank_fusion(
+                    embedding_results,
+                    bm25_results,
+                    k=60
+                )
+                
+                final_results = fused_results[:top_k]
+                
+                # 统一格式
+                memories = []
+                for doc, rrf_score in final_results:
+                    # doc 可能来自 Milvus 或 ES，需要统一格式
+                    # 区分方法：Milvus 有 'id' 字段，ES 有 'event_id' 字段
+                    if 'event_id' in doc and 'id' not in doc:
+                        # 来自 ES 的结果（已经是标准格式）
+                        memory = {
+                            'score': rrf_score,
+                            'event_id': doc.get('event_id', ''),
+                            'user_id': doc.get('user_id', ''),
+                            'group_id': doc.get('group_id', ''),
+                            'timestamp': doc.get('timestamp', ''),
+                            'subject': '',
+                            'episode': doc.get('episode', ''),
+                            'summary': '',
+                            'memory_sub_type': doc.get('memory_sub_type', ''),
+                            'metadata': doc.get('metadata', {}),
+                        }
+                    else:
+                        # 来自 Milvus 的结果（需要转换字段名）
+                        memory = {
+                            'score': rrf_score,
+                            'event_id': doc.get('id', ''),  # Milvus 用 'id'
+                            'user_id': doc.get('user_id', ''),
+                            'group_id': doc.get('group_id', ''),
+                            'timestamp': doc.get('timestamp', ''),
+                            'subject': doc.get('metadata', {}).get('title', '') if isinstance(doc.get('metadata'), dict) else '',
+                            'episode': doc.get('episode', ''),
+                            'summary': doc.get('metadata', {}).get('summary', '') if isinstance(doc.get('metadata'), dict) else '',
+                            'memory_sub_type': doc.get('memory_sub_type', ''),
+                            'metadata': doc.get('metadata', {}) if isinstance(doc.get('metadata'), dict) else {},
+                        }
+                    memories.append(memory)
+                
+                metadata = {
+                    "retrieval_mode": "rrf",
+                    "data_source": data_source,
+                    "embedding_candidates": embedding_count,
+                    "bm25_candidates": bm25_count,
+                    "final_count": len(memories),
+                    "total_latency_ms": (time.time() - start_time) * 1000
+                }
+            
+            return {
+                "memories": memories,
+                "count": len(memories),
+                "metadata": metadata,
+            }
+        
+        except Exception as e:
+            logger.error(f"向量存储检索失败: {e}", exc_info=True)
+            return {
+                "memories": [],
+                "count": 0,
+                "metadata": {
+                    "retrieval_mode": retrieval_mode,
+                    "data_source": data_source,
+                    "error": str(e),
+                    "total_latency_ms": (time.time() - start_time) * 1000
+                }
+            }
+    
+    # --------- Agentic 检索（LLM 引导的多轮检索）---------
+    @trace_logger(operation_name="agentic_layer Agentic检索")
+    async def retrieve_agentic(
+        self,
+        query: str,
+        user_id: str = None,
+        group_id: str = None,
+        time_range_days: int = 365,
+        top_k: int = 20,
+        llm_provider = None,
+        agentic_config = None,
+    ) -> Dict[str, Any]:
+        """Agentic 检索：LLM 引导的多轮智能检索
+        
+        流程：Round 1 (RRF检索) → Rerank → LLM判断 → Round 2 (多查询) → 融合 → Rerank
+        """
+        # 验证参数
+        if llm_provider is None:
+            raise ValueError("llm_provider is required for agentic retrieval")
+        
+        # 导入依赖
+        from .agentic_utils import AgenticConfig, check_sufficiency, generate_multi_queries, format_documents_for_llm
+        from .rerank_service import get_rerank_service
+        
+        # 使用默认配置
+        if agentic_config is None:
+            agentic_config = AgenticConfig()
+        config = agentic_config
+        
+        start_time = time.time()
+        metadata = {
+            "retrieval_mode": "agentic",
+            "is_multi_round": False,
+            "round1_count": 0,
+            "round1_reranked_count": 0,
+            "is_sufficient": None,
+            "reasoning": None,
+            "missing_info": None,
+            "refined_queries": None,
+            "round2_count": 0,
+            "final_count": 0,
+            "total_latency_ms": 0.0,
+        }
+        
+        logger.info(f"{'='*60}")
+        logger.info(f"Agentic Retrieval: {query[:60]}...")
+        logger.info(f"{'='*60}")
+        
+        try:
+            # ========== Round 1: RRF 混合检索 ==========
+            logger.info("Round 1: RRF retrieval...")
+            
+            round1_result = await self.retrieve_lightweight(
+                query=query,
+                user_id=user_id,
+                group_id=group_id,
+                time_range_days=time_range_days,
+                top_k=config.round1_top_n,  # 20
+                retrieval_mode="rrf",
+                data_source="memcell",
+            )
+            
+            round1_memories = round1_result.get("memories", [])
+            metadata["round1_count"] = len(round1_memories)
+            metadata["round1_latency_ms"] = round1_result.get("metadata", {}).get("total_latency_ms", 0)
+            
+            logger.info(f"Round 1: Retrieved {len(round1_memories)} memories")
+            
+            if not round1_memories:
+                logger.warning("Round 1 returned no results")
+                metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+                return {"memories": [], "count": 0, "metadata": metadata}
+            
+            # ========== Rerank Round 1 结果 → Top 5 ==========
+            if config.use_reranker:
+                logger.info("Reranking Top 20 to Top 5 for sufficiency check...")
+                rerank_service = get_rerank_service()
+                
+                # 转换格式用于 rerank
+                candidates_for_rerank = [
+                    {
+                        "index": i,
+                        "episode": mem.get("episode", ""),
+                        "summary": mem.get("summary", ""),
+                        "subject": mem.get("subject", ""),
+                        "score": mem.get("score", 0),
+                    }
+                    for i, mem in enumerate(round1_memories)
+                ]
+                
+                reranked_hits = await rerank_service._rerank_all_hits(
+                    query, candidates_for_rerank, top_k=config.round1_rerank_top_n
+                )
+                
+                # 提取 Top 5 用于 LLM 判断
+                top5_for_llm = []
+                for hit in reranked_hits[:config.round1_rerank_top_n]:
+                    idx = hit.get("index", 0)
+                    if 0 <= idx < len(round1_memories):
+                        mem = round1_memories[idx]
+                        # 转换为 (candidate, score) 格式供 LLM 使用
+                        top5_for_llm.append((mem, hit.get("relevance_score", 0)))
+                
+                metadata["round1_reranked_count"] = len(top5_for_llm)
+                logger.info(f"Rerank: Got Top {len(top5_for_llm)} for sufficiency check")
+            else:
+                # 不使用 reranker，直接取前 5
+                top5_for_llm = [(mem, mem.get("score", 0)) for mem in round1_memories[:config.round1_rerank_top_n]]
+                metadata["round1_reranked_count"] = len(top5_for_llm)
+                logger.info("No Rerank: Using original Top 5")
+            
+            if not top5_for_llm:
+                logger.warning("No results for sufficiency check")
+                metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+                return round1_result
+            
+            # ========== LLM 判断充分性 ==========
+            logger.info("LLM: Checking sufficiency on Top 5...")
+            
+            is_sufficient, reasoning, missing_info = await check_sufficiency(
+                query=query,
+                results=top5_for_llm,
+                llm_provider=llm_provider,
+                max_docs=config.round1_rerank_top_n
+            )
+            
+            metadata["is_sufficient"] = is_sufficient
+            metadata["reasoning"] = reasoning
+            metadata["missing_info"] = missing_info
+            
+            logger.info(f"LLM Result: {'✅ Sufficient' if is_sufficient else '❌ Insufficient'}")
+            logger.info(f"LLM Reasoning: {reasoning}")
+            
+            # ========== 如果充分：直接返回 Round 1 结果 ==========
+            if is_sufficient:
+                logger.info("Decision: Sufficient! Using Round 1 results")
+                metadata["final_count"] = len(round1_memories)
+                metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+                
+                round1_result["metadata"] = metadata
+                logger.info(f"Complete: Latency {metadata['total_latency_ms']:.0f}ms")
+                return round1_result
+            
+            # ========== Round 2: LLM 生成多个改进查询 ==========
+            metadata["is_multi_round"] = True
+            logger.info("Decision: Insufficient, entering Round 2")
+            
+            if missing_info:
+                logger.info(f"Missing: {', '.join(missing_info)}")
+            
+            if config.enable_multi_query:
+                logger.info("LLM: Generating multiple refined queries...")
+                
+                refined_queries, query_strategy = await generate_multi_queries(
+                    original_query=query,
+                    results=top5_for_llm,
+                    missing_info=missing_info,
+                    llm_provider=llm_provider,
+                    max_docs=config.round1_rerank_top_n,
+                    num_queries=config.num_queries
+                )
+                
+                metadata["refined_queries"] = refined_queries
+                metadata["query_strategy"] = query_strategy
+                metadata["num_queries"] = len(refined_queries)
+                
+                logger.info(f"Generated {len(refined_queries)} queries")
+                for i, q in enumerate(refined_queries, 1):
+                    logger.debug(f"  Query {i}: {q[:80]}...")
+            else:
+                # 单查询模式
+                refined_queries = [query]
+                metadata["refined_queries"] = refined_queries
+                metadata["num_queries"] = 1
+            
+            # ========== Round 2: 并行执行多查询检索 ==========
+            logger.info(f"Round 2: Executing {len(refined_queries)} queries in parallel...")
+            
+            # 并行调用 retrieve_lightweight
+            round2_tasks = [
+                self.retrieve_lightweight(
+                    query=q,
+                    user_id=user_id,
+                    group_id=group_id,
+                    time_range_days=time_range_days,
+                    top_k=config.round2_per_query_top_n,  # 每个查询 50 条
+                    retrieval_mode="rrf",
+                    data_source="memcell",
+                )
+                for q in refined_queries
+            ]
+            
+            round2_results_list = await asyncio.gather(*round2_tasks, return_exceptions=True)
+            
+            # 收集所有查询的结果
+            all_round2_memories = []
+            for i, result in enumerate(round2_results_list, 1):
+                if isinstance(result, Exception):
+                    logger.error(f"Query {i} failed: {result}")
+                    continue
+                
+                memories = result.get("memories", [])
+                if memories:
+                    all_round2_memories.extend(memories)
+                    logger.debug(f"Query {i}: Retrieved {len(memories)} memories")
+            
+            logger.info(f"Round 2: Total retrieved {len(all_round2_memories)} memories before dedup")
+            
+            # ========== 去重和融合 ==========
+            logger.info("Merge: Deduplicating and combining Round 1 + Round 2...")
+            
+            # 去重：使用 event_id
+            round1_event_ids = {mem.get("event_id") for mem in round1_memories}
+            round2_unique = [
+                mem for mem in all_round2_memories
+                if mem.get("event_id") not in round1_event_ids
+            ]
+            
+            # 合并：Round 1 (20) + Round 2 去重后的结果（最多取到总数 40）
+            combined_memories = round1_memories.copy()
+            needed_from_round2 = config.combined_total - len(combined_memories)
+            combined_memories.extend(round2_unique[:needed_from_round2])
+            
+            metadata["round2_count"] = len(round2_unique[:needed_from_round2])
+            logger.info(f"Merge: Round1={len(round1_memories)}, Round2_unique={len(round2_unique[:needed_from_round2])}, Total={len(combined_memories)}")
+            
+            # ========== Final Rerank ==========
+            if config.use_reranker and len(combined_memories) > 0:
+                logger.info(f"Rerank: Reranking {len(combined_memories)} memories...")
+                
+                rerank_service = get_rerank_service()
+                
+                # 转换格式
+                candidates_for_rerank = [
+                    {
+                        "index": i,
+                        "episode": mem.get("episode", ""),
+                        "summary": mem.get("summary", ""),
+                        "subject": mem.get("subject", ""),
+                        "score": mem.get("score", 0),
+                    }
+                    for i, mem in enumerate(combined_memories)
+                ]
+                
+                reranked_hits = await rerank_service._rerank_all_hits(
+                    query,  # 使用原始查询
+                    candidates_for_rerank,
+                    top_k=config.final_top_n
+                )
+                
+                # 提取最终 Top 20
+                final_memories = []
+                for hit in reranked_hits[:config.final_top_n]:
+                    idx = hit.get("index", 0)
+                    if 0 <= idx < len(combined_memories):
+                        mem = combined_memories[idx].copy()
+                        mem["score"] = hit.get("relevance_score", mem.get("score", 0))
+                        final_memories.append(mem)
+                
+                logger.info(f"Rerank: Final Top {len(final_memories)} selected")
+            else:
+                # 不使用 Reranker，直接返回 Top N
+                final_memories = combined_memories[:config.final_top_n]
+                logger.info(f"No Rerank: Returning Top {len(final_memories)}")
+            
+            metadata["final_count"] = len(final_memories)
+            metadata["total_latency_ms"] = (time.time() - start_time) * 1000
+            
+            logger.info(f"Complete: Final {len(final_memories)} memories | Latency {metadata['total_latency_ms']:.0f}ms")
+            logger.info(f"{'='*60}\n")
+            
+            return {
+                "memories": final_memories,
+                "count": len(final_memories),
+                "metadata": metadata,
+            }
+        
+        except Exception as e:
+            logger.error(f"Agentic retrieval failed: {e}", exc_info=True)
+            
+            # 降级到 lightweight
+            logger.warning("Falling back to lightweight retrieval")
+            
+            fallback_result = await self.retrieve_lightweight(
+                query=query,
+                user_id=user_id,
+                group_id=group_id,
+                time_range_days=time_range_days,
+                top_k=top_k,
+                retrieval_mode="rrf",
+                data_source="memcell",
+            )
+            
+            fallback_result["metadata"]["retrieval_mode"] = "agentic_fallback"
+            fallback_result["metadata"]["fallback_reason"] = str(e)
+            
+            return fallback_result

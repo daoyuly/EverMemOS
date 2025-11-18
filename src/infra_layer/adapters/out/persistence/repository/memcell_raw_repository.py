@@ -8,7 +8,7 @@ MemCell 原生 CRUD 仓库
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 from bson import ObjectId
-from beanie.operators import And, GTE, LT, Eq, RegEx
+from beanie.operators import And, GTE, LT, Eq, RegEx, Or
 from motor.motor_asyncio import AsyncIOMotorClientSession
 from core.observation.logger import get_logger
 from core.di.decorators import repository
@@ -186,6 +186,8 @@ class MemCellRawRepository(BaseRepository[MemCell]):
     ) -> List[MemCell]:
         """
         根据用户 ID 和时间范围查询 MemCell
+        
+        同时检查 user_id 字段和 participants 数组，只要 user_id 在其中之一即可
 
         Args:
             user_id: 用户 ID
@@ -198,9 +200,15 @@ class MemCellRawRepository(BaseRepository[MemCell]):
             MemCell 列表
         """
         try:
+            # 同时检查 user_id 字段和 participants 数组
+            # 使用 OR 逻辑：user_id 匹配 或者 user_id 在 participants 中
+            # 注意：MongoDB 对数组字段使用 Eq 会自动检查数组是否包含该值
             query = self.model.find(
                 And(
+                    Or(
                     Eq(MemCell.user_id, user_id),
+                        Eq(MemCell.participants, user_id)  # MongoDB 会检查数组中是否包含该值
+                    ),
                     GTE(MemCell.timestamp, start_time),
                     LT(MemCell.timestamp, end_time),
                 )

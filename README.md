@@ -1,24 +1,21 @@
 <div align="center">
 
-<h1>EverMemOS 🧠</h1>
+<h1>EverMemOS </h1>
 
 <p><strong>Let every interaction be driven by understanding.</strong> · Enterprise-Grade Intelligent Memory System</p>
 
 <p>
-  <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-0A9CF3?style=flat-square" />
-  <img alt="License" src="https://img.shields.io/badge/License-Apache%202.0-00BFA6?style=flat-square" />
-  <img alt="Status" src="https://img.shields.io/badge/Status-Production-00C49A?style=flat-square" />
-  <img alt="Code Size" src="https://img.shields.io/github/languages/code-size/EverMind-AI/EverMemOS?color=0097A7&style=flat-square" />
-  <a href="https://github.com/EverMind-AI/EverMemOS/releases">
-    <img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-0088CC?style=flat-square" />
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white" />
+  <img alt="License" src="https://img.shields.io/badge/License-Apache%202.0-D22128?style=flat-square&logo=apache&logoColor=white" />
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-Supported-2496ED?style=flat-square&logo=docker&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-Latest-009688?style=flat-square&logo=fastapi&logoColor=white" />
+  <img alt="MongoDB" src="https://img.shields.io/badge/MongoDB-7.0+-47A248?style=flat-square&logo=mongodb&logoColor=white" />
+  <img alt="Elasticsearch" src="https://img.shields.io/badge/Elasticsearch-8.x-005571?style=flat-square&logo=elasticsearch&logoColor=white" />
+  <img alt="Milvus" src="https://img.shields.io/badge/Milvus-2.4+-00A3E0?style=flat-square" />
+  <img alt="Redis" src="https://img.shields.io/badge/Redis-7.x-DC382D?style=flat-square&logo=redis&logoColor=white" />
+   <a href="https://github.com/EverMind-AI/EverMemOS/releases">
+    <img alt="Release" src="https://img.shields.io/badge/release-v1.0.0-4A90E2?style=flat-square" />
   </a>
-<!-- 
-  <a href="https://github.com/EverMind-AI/EverMemOS/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/EverMind-AI/EverMemOS" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/EverMind-AI/EverMemOS?style=social" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/EverMind-AI/EverMemOS?style=social" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/pulls"><img alt="Pull Requests" src="https://img.shields.io/github/issues-pr/EverMind-AI/EverMemOS" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/actions"><img alt="Build Status" src="https://img.shields.io/github/actions/workflow/status/EverMind-AI/EverMemOS/main.yml?branch=main" /></a> -->
-  <!-- <a href="https://github.com/EverMind-AI/EverMemOS/issues"><img alt="Issues" src="https://img.shields.io/github/issues/EverMind-AI/EverMemOS" /></a> -->
 </p>
 
 <p>
@@ -155,12 +152,6 @@ Memory perception layer: quickly recalls relevant memories through multi-round r
 
 #### 🎯 Intelligent Retrieval Tools
 
-- **🔎 Keyword Retrieval (BM25)**  
-  Precision matching based on term frequency and inverse document frequency
-  
-- **🧭 Semantic Retrieval (MaxSim)**  
-  Atomic fact-level semantic similarity matching  
-
 - **🧪 Hybrid Retrieval (RRF Fusion)**  
   Parallel execution of semantic and keyword retrieval, seamlessly fused using Reciprocal Rank Fusion algorithm
 
@@ -171,9 +162,8 @@ Memory perception layer: quickly recalls relevant memories through multi-round r
 #### 🤖 Agentic Intelligent Retrieval
 
 - **🎓 LLM-Guided Multi-Round Recall**  
-  - **Round 1**: Hybrid retrieval filtering → Rerank refinement → LLM sufficiency judgment
-  - **Round 2**: For insufficient cases, generate 2-3 complementary queries, retrieve and fuse in parallel
-  - Automatically identifies missing information, proactively filling retrieval blind spots
+  For insufficient cases, generate 2-3 complementary queries, retrieve and fuse in parallel
+  Automatically identifies missing information, proactively filling retrieval blind spots
 
 - **🔀 Multi-Query Parallel Strategy**  
   When a single query cannot fully express intent, generate multiple complementary perspective queries  
@@ -229,30 +219,49 @@ memsys-opensource/
 
 - Python 3.10+
 - uv (recommended package manager)
-- [MongoDB Installation Guide](docs/usage/MONGODB_GUIDE.md), Redis, Elasticsearch, Milvus (optional)
+- Docker and Docker Compose
 
 ### Installation
+
+#### Using Docker for Dependency Services ⭐
+
+Use Docker Compose to start all dependency services (MongoDB, Elasticsearch, Milvus, Redis) with one command:
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/your-org/memsys_opensource.git
 cd memsys_opensource
 
-# 2. Install uv (if not already installed)
+# 2. Start Docker services
+docker-compose up -d
+
+# 3. Verify service status
+docker-compose ps
+
+# 4. Install uv (if not already installed)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Install project dependencies
+# 5. Install project dependencies
 uv sync
 
-# 4. Configure environment variables
+# 6. Configure environment variables
 cp env.template .env
 # Edit the .env file and fill in the necessary configurations:
-#   - LLM_API_KEY: Defaults to OpenRouter. Please enter your OpenRouter API Key.
-#   - DEEPINFRA_API_KEY: Enter your DeepInfra API Key for Embedding and Rerank services.
-#   - Other databases (MongoDB/Redis/ES/Milvus) should be configured according to your local or remote deployment.
-
+#   - LLM_API_KEY: Enter your LLM API Key (for memory extraction)
+#   - DEEPINFRA_API_KEY: Enter your DeepInfra API Key (for Embedding and Rerank)
 ```
 
+**Docker Services**:
+- **MongoDB** (27017): Primary database for storing memory cells and profiles
+- **Elasticsearch** (19200): Keyword search engine (BM25)
+- **Milvus** (19530): Vector database for semantic retrieval
+- **Redis** (6479): Cache service
+
+> 💡 For detailed Docker configuration and management, see [Docker Deployment Guide](DOCKER_DEPLOYMENT.md)
+
+> 📖 MongoDB detailed installation guide: [MongoDB Installation Guide](docs/usage/MONGODB_GUIDE.md)
+
+---
 
 ### How to Use
 
@@ -264,11 +273,51 @@ EverMemOS offers multiple usage methods. Choose the one that best suits your nee
 
 The demo showcases the end-to-end functionality of EverMemOS.
 
+---
+
+**🚀 Quick Start: Simple Demo (Recommended)** ⭐
+
+The fastest way to experience EverMemOS! Just 2 steps to see memory storage and retrieval in action:
+
+```bash
+# Step 1: Start the API server (in terminal 1)
+uv run python src/bootstrap.py start_server.py
+
+# Step 2: Run the simple demo (in terminal 2)
+uv run python src/bootstrap.py demo/simple_demo.py
+```
+
+**What it does:**
+- Stores 4 conversation messages about sports hobbies
+- Waits 10 seconds for indexing
+- Searches for relevant memories with 3 different queries
+- Shows complete workflow with friendly explanations
+
+**Perfect for:** First-time users, quick testing, understanding core concepts
+
+See the demo code at [`demo/simple_demo.py`](demo/simple_demo.py)
+
+---
+
+We also provide a full-featured experience:
+
+**Prerequisites: Start the API Server**
+
+```bash
+# Terminal 1: Start the API server (required)
+uv run python src/bootstrap.py start_server.py
+```
+
+> 💡 **Tip**: Keep the API server running throughout. All following operations should be performed in another terminal.
+
+---
+
 **Step 1: Extract Memories**
 
 Run the memory extraction script to process sample conversation data and build the memory database:
 
 ```bash
+# Terminal 2: Run the extraction script
 uv run python src/bootstrap.py demo/extract_memory.py
 ```
 
@@ -278,19 +327,15 @@ This script will:
 - Generate user profiles and save them to `demo/memcell_outputs/` directory
 
 > **💡 Tip**:
-> By default, the script extracts memories for the **ASSISTANT** scenario. You can optionally extract memories for the **GROUP_CHAT** scenario:
-> 1. Open the `demo/extract_memory.py` file.
-> 2. Locate the `EXTRACT_CONFIG` section.
-> 3. Change `scenario_type` from `ScenarioType.ASSISTANT` to `ScenarioType.GROUP_CHAT`.
-> 4. Run the extraction script again.
->
-> You can run either one or both scenarios.
+> Configuration is very simple! `extract_memory.py` uses HTTP API and requires only 2 parameters to run.
+> For detailed configuration instructions and usage guide, please see the [Demo Documentation](demo/README.md).
 
 **Step 2: Chat with Memory**
 
 After extracting memories, start the interactive chat demo:
 
 ```bash
+# Terminal 2: Run the chat program (ensure API server is still running)
 uv run python src/bootstrap.py demo/chat_with_memory.py
 ```
 
@@ -308,36 +353,84 @@ This will launch a command-line interface where you can converse with an agent t
 
 #### 📊 Run Evaluation: Performance Testing
 
-The evaluation framework provides a systematic way to measure the performance of the memory system, based on the LoCoMo evaluation dataset.
+The evaluation framework provides a unified, modular way to benchmark memory systems on standard datasets (LoCoMo, LongMemEval, PersonaMem).
+
+**Quick Test (Smoke Test)**:
 
 ```bash
-# Stage 1: MemCell Extraction
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage1_memcells_extraction.py
+# Test with limited data to verify everything works
+# Default: first conversation, first 10 messages, first 3 questions
+uv run python -m evaluation.cli --dataset locomo --system evermemos --smoke
 
-# Stage 2: Index Building
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage2_index_building.py
+# Custom smoke test: 20 messages, 5 questions
+uv run python -m evaluation.cli --dataset locomo --system evermemos \
+    --smoke --smoke-messages 20 --smoke-questions 5
 
-# Stage 3: Memory Retrieval
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage3_memory_retrivel.py
+# Test different datasets
+uv run python -m evaluation.cli --dataset longmemeval --system evermemos --smoke
+uv run python -m evaluation.cli --dataset personamem --system evermemos --smoke
 
-# Stage 4: Response Generation
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage4_response.py
+# Test specific stages (e.g., only search and answer)
+uv run python -m evaluation.cli --dataset locomo --system evermemos \
+    --smoke --stages search answer
 
-# Stage 5: Evaluation
-uv run python src/bootstrap.py evaluation/locomo_evaluation/stage5_eval.py
+# View smoke test results quickly
+cat evaluation/results/locomo-evermemos-smoke/report.txt
 ```
 
-Each script corresponds to a stage in the evaluation pipeline, from data processing to performance scoring.
+**Full Evaluation**:
+
+```bash
+# Evaluate EvermemOS on LoCoMo benchmark
+uv run python -m evaluation.cli --dataset locomo --system evermemos
+
+# Evaluate on other datasets
+uv run python -m evaluation.cli --dataset longmemeval --system evermemos
+uv run python -m evaluation.cli --dataset personamem --system evermemos
+
+# Use --run-name to distinguish multiple runs (useful for A/B testing)
+uv run python -m evaluation.cli --dataset locomo --system evermemos --run-name baseline
+uv run python -m evaluation.cli --dataset locomo --system evermemos --run-name experiment1
+
+# Resume from checkpoint if interrupted (automatic)
+# Just re-run the same command - it will detect and resume from checkpoint
+uv run python -m evaluation.cli --dataset locomo --system evermemos
+```
+
+**View Results**:
+
+```bash
+# Results are saved to evaluation/results/{dataset}-{system}[-{run-name}]/
+cat evaluation/results/locomo-evermemos/report.txt          # Summary metrics
+cat evaluation/results/locomo-evermemos/eval_results.json   # Detailed per-question results
+cat evaluation/results/locomo-evermemos/pipeline.log        # Execution logs
+```
+
+The evaluation pipeline consists of 4 stages (add → search → answer → evaluate) with automatic checkpointing and resume support.
 
 > **⚙️ Evaluation Configuration**:
-> Before running the evaluation, you can modify the `evaluation/locomo_evaluation/config.py` file to adjust the experiment settings:
-> - **`ExperimentConfig.experiment_name`**: Change this to alter the save directory for the results.
-> - **`ExperimentConfig.llm_service`**: Select the LLM service to use and configure its parameters (e.g., `"openai"` or `"vllm"`).
-> - **`ExperimentConfig.llm_config`**: Configure parameters for the selected LLM service in this dictionary, such as the model, `base_url`, and `api_key`.
+> - **Data Preparation**: Place datasets in `evaluation/data/` (see `evaluation/README.md`)
+> - **Environment**: Configure `.env` with LLM API keys (see `env.template`)
+> - **Installation**: Run `uv sync --group evaluation` to install dependencies
+> - **Custom Config**: Copy and modify YAML files in `evaluation/config/systems/` or `evaluation/config/datasets/`
+> - **Advanced Usage**: See `evaluation/README.md` for checkpoint management, stage-specific runs, and system comparisons
 
 ---
 
 #### 🔌 Call API Endpoints
+
+**Prerequisites: Start the API Server**
+
+Before calling the API, make sure the API server is running:
+
+```bash
+# Start the API server
+uv run python src/bootstrap.py start_server.py
+```
+
+> 💡 **Tip**: Keep the API server running throughout. All following API calls should be performed in another terminal.
+
+---
 
 Use V3 API to store single message memory:
 
@@ -355,6 +448,14 @@ curl -X POST http://localhost:1995/api/v3/agentic/memorize \
   }'
 ```
 
+**API Features**:
+
+- **`/api/v3/agentic/memorize`**: Store single message memory
+- **`/api/v3/agentic/retrieve_lightweight`**: Lightweight memory retrieval (Embedding + BM25 + RRF)
+- **`/api/v3/agentic/retrieve_agentic`**: Agentic memory retrieval (LLM-guided multi-round intelligent retrieval)
+
+For more API details, please refer to [Agentic V3 API Documentation](docs/api_docs/agentic_v3_api.md).
+
 ---
 
 #### 📦 Batch Store Group Chat Memory
@@ -362,14 +463,19 @@ curl -X POST http://localhost:1995/api/v3/agentic/memorize \
 EverMemOS supports a standardized group chat data format ([GroupChatFormat](data_format/group_chat/group_chat_format.md)). You can use scripts for batch storage:
 
 ```bash
-# Use script for batch storage
+# Use script for batch storage (Chinese data)
 uv run python src/bootstrap.py src/run_memorize.py \
-  --input data/group_chat.json \
+  --input data/group_chat_zh.json \
+  --api-url http://localhost:1995/api/v3/agentic/memorize
+
+# Or use English data
+uv run python src/bootstrap.py src/run_memorize.py \
+  --input data/group_chat_en.json \
   --api-url http://localhost:1995/api/v3/agentic/memorize
 
 # Validate file format
 uv run python src/bootstrap.py src/run_memorize.py \
-  --input data/group_chat.json \
+  --input data/group_chat_en.json \
   --validate-only
 ```
 
