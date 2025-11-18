@@ -230,7 +230,8 @@ class AgenticV3Controller(BaseController):
             raise HTTPException(
                 status_code=500, detail="存储记忆失败，请稍后重试"
             ) from e
-    
+
+
     @post(
         "/retrieve_lightweight",
         response_model=Dict[str, Any],
@@ -526,4 +527,140 @@ class AgenticV3Controller(BaseController):
             logger.error("V3 retrieve_agentic 请求处理失败: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=500, detail="Agentic 检索失败，请稍后重试"
+            ) from e
+
+
+
+ @post(
+        "/conversation-meta",
+        response_model=Dict[str, Any],
+        summary="保存对话元数据",
+        description="""
+        保存对话的元数据信息，包括场景、参与者、标签等
+        """
+    )
+    async def save_conversation_meta(
+        self, fastapi_request: FastAPIRequest
+    ) -> Dict[str, Any]:
+        """
+        保存对话元数据
+
+        接收 ConversationMetaRequest 格式的数据，转换为 ConversationMeta ODM 模型并保存到 MongoDB
+
+        Args:
+            fastapi_request: FastAPI 请求对象
+
+        Returns:
+            Dict[str, Any]: 保存响应，包含已保存的元数据信息
+
+        Raises:
+            HTTPException: 当请求处理失败时
+        """
+        try:
+            # 1. 从请求中获取 JSON body
+            request_data = await fastapi_request.json()
+            logger.info("收到 V3 conversation-meta 保存请求: group_id=%s", request_data.get("group_id"))
+
+            # 2. 解析为 ConversationMetaRequest
+            # 处理 user_details 的转换
+            user_details_data = request_data.get("user_details", {})
+            user_details = {}
+            for user_id, detail_data in user_details_data.items():
+                user_details[user_id] = UserDetail(
+                    full_name=detail_data["full_name"],
+                    role=detail_data["role"],
+                    extra=detail_data.get("extra", {}),
+                )
+
+            conversation_meta_request = ConversationMetaRequest(
+                version=request_data["version"],
+                scene=request_data["scene"],
+                scene_desc=request_data["scene_desc"],
+                name=request_data["name"],
+                description=request_data["description"],
+                group_id=request_data["group_id"],
+                created_at=request_data["created_at"],
+                default_timezone=request_data["default_timezone"],
+                user_details=user_details,
+                tags=request_data.get("tags", []),
+            )
+
+            logger.info("解析 ConversationMetaRequest 成功: group_id=%s", conversation_meta_request.group_id)
+
+            # 3. 转换为 ConversationMeta ODM 模型
+            user_details_model = {}
+            for user_id, detail in conversation_meta_request.user_details.items():
+                user_details_model[user_id] = UserDetailModel(
+                    full_name=detail.full_name,
+                    role=detail.role,
+                    extra=detail.extra,
+                )
+
+            conversation_meta = ConversationMeta(
+                version=conversation_meta_request.version,
+                scene=conversation_meta_request.scene,
+                scene_desc=conversation_meta_request.scene_desc,
+                name=conversation_meta_request.name,
+                description=conversation_meta_request.description,
+                group_id=conversation_meta_request.group_id,
+                conversation_created_at=conversation_meta_request.created_at,
+                default_timezone=conversation_meta_request.default_timezone,
+                user_details=user_details_model,
+                tags=conversation_meta_request.tags,
+            )
+
+            # 4. 使用 upsert 方式保存（如果 group_id 已存在则更新）
+            logger.info("开始保存对话元数据到 MongoDB")
+            saved_meta = await self.conversation_meta_repository.upsert_by_group_id(
+                group_id=conversation_meta.group_id,
+                conversation_data={
+                    "version": conversation_meta.version,
+                    "scene": conversation_meta.scene,
+                    "scene_desc": conversation_meta.scene_desc,
+                    "name": conversation_meta.name,
+                    "description": conversation_meta.description,
+                    "conversation_created_at": conversation_meta.conversation_created_at,
+                    "default_timezone": conversation_meta.default_timezone,
+                    "user_details": conversation_meta.user_details,
+                    "tags": conversation_meta.tags,
+                },
+            )
+
+            if not saved_meta:
+                raise HTTPException(
+                    status_code=500, detail="保存对话元数据失败"
+                )
+
+            logger.info("保存对话元数据成功: id=%s, group_id=%s", saved_meta.id, saved_meta.group_id)
+
+            # 5. 返回成功响应
+            return {
+                "status": ErrorStatus.OK.value,
+                "message": "对话元数据保存成功",
+                "result": {
+                    "id": str(saved_meta.id),
+                    "group_id": saved_meta.group_id,
+                    "scene": saved_meta.scene,
+                    "name": saved_meta.name,
+                    "version": saved_meta.version,
+                    "created_at": saved_meta.created_at.isoformat() if saved_meta.created_at else None,
+                    "updated_at": saved_meta.updated_at.isoformat() if saved_meta.updated_at else None,
+                },
+            }
+
+        except KeyError as e:
+            logger.error("V3 conversation-meta 请求缺少必需字段: %s", e)
+            raise HTTPException(
+                status_code=400, detail=f"缺少必需字段: {str(e)}"
+            ) from e
+        except ValueError as e:
+            logger.error("V3 conversation-meta 请求参数错误: %s", e)
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except HTTPException:
+            # 重新抛出 HTTPException
+            raise
+        except Exception as e:
+            logger.error("V3 conversation-meta 请求处理失败: %s", e, exc_info=True)
+            raise HTTPException(
+                status_code=500, detail="保存对话元数据失败，请稍后重试"
             ) from e
