@@ -855,8 +855,8 @@ def _convert_memcell_to_document(
             except Exception as e:
                 logger.warning(f"数据类型转换失败: {e}")
 
-        # 选择一个用户ID作为主用户ID（文档模型只支持单个user_id）
-        primary_user_id = memcell.user_id_list[0] if memcell.user_id_list else "unknown"
+        # MemCell 本身就是群组记忆，user_id 始终为 None
+        primary_user_id = None
 
         # 准备扩展字段 - 根据MemCell的具体类型提取扩展属性
         email_fields = {}

@@ -1,7 +1,8 @@
 """
-个人语义记忆 Milvus 转换器
+语义记忆 Milvus 转换器
 
 负责将 MongoDB 的 PersonalSemanticMemory 文档转换为 Milvus Collection 实体。
+支持个人和群组语义记忆。
 """
 
 from typing import Dict, Any
@@ -10,8 +11,8 @@ from datetime import datetime
 
 from core.oxm.milvus.base_converter import BaseMilvusConverter
 from core.observation.logger import get_logger
-from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import (
-    EpisodicMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import (
+    SemanticMemoryCollection,
 )
 from infra_layer.adapters.out.persistence.document.memory.personal_semantic_memory import (
     PersonalSemanticMemory as MongoPersonalSemanticMemory,
@@ -20,12 +21,12 @@ from infra_layer.adapters.out.persistence.document.memory.personal_semantic_memo
 logger = get_logger(__name__)
 
 
-class PersonalSemanticMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCollection]):
+class SemanticMemoryMilvusConverter(BaseMilvusConverter[SemanticMemoryCollection]):
     """
-    PersonalSemanticMemory Milvus 转换器
+    语义记忆 Milvus 转换器
     
     将 MongoDB 的 PersonalSemanticMemory 文档转换为 Milvus Collection 实体。
-    注意：使用现有的 EpisodicMemoryCollection，通过 memory_sub_type 字段区分。
+    使用独立的 SemanticMemoryCollection，支持个人和群组语义记忆。
     """
 
     @classmethod
@@ -61,9 +62,6 @@ class PersonalSemanticMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCo
                 elif isinstance(source_doc.end_time, datetime):
                     end_time = int(source_doc.end_time.timestamp())
             
-            # 使用 start_time 作为主时间戳
-            timestamp = start_time if start_time > 0 else int(datetime.now().timestamp())
-            
             # 构建搜索内容
             search_content = cls._build_search_content(source_doc)
             
@@ -73,17 +71,16 @@ class PersonalSemanticMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCo
                 "id": str(source_doc.id) if source_doc.id else "",
                 "user_id": source_doc.user_id,
                 "group_id": source_doc.group_id or "",
-                "participants": getattr(source_doc, 'participants', []),  # 添加 participants
+                "participants": source_doc.participants if source_doc.participants else [],
+                "parent_episode_id": source_doc.parent_episode_id,
                 # 时间字段
-                "timestamp": timestamp,
                 "start_time": start_time,
                 "end_time": end_time,
+                "duration_days": source_doc.duration_days if source_doc.duration_days else 0,
                 # 核心内容字段
-                "episode": source_doc.content,
+                "content": source_doc.content,
+                "evidence": source_doc.evidence or "",
                 "search_content": search_content,
-                # 分类字段 - 标记为个人语义记忆
-                "memory_sub_type": "personal_semantic_memory",
-                "event_type": "semantic",
                 # 详细信息 JSON
                 "metadata": json.dumps(cls._build_detail(source_doc), ensure_ascii=False),
                 # 审计字段
@@ -111,10 +108,6 @@ class PersonalSemanticMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCo
     def _build_detail(cls, source_doc: MongoPersonalSemanticMemory) -> Dict[str, Any]:
         """构建详细信息字典"""
         detail = {
-            "parent_episode_id": source_doc.parent_episode_id,
-            "duration_days": source_doc.duration_days,
-            "evidence": source_doc.evidence,
-            "participants": source_doc.participants,
             "vector_model": source_doc.vector_model,
             "extend": source_doc.extend,
         }
@@ -127,8 +120,13 @@ class PersonalSemanticMemoryMilvusConverter(BaseMilvusConverter[EpisodicMemoryCo
         """构建搜索内容（JSON 列表格式）"""
         text_content = []
         
+        # 主要内容
         if source_doc.content:
             text_content.append(source_doc.content)
+        
+        # 添加证据信息以提升检索能力
+        if source_doc.evidence:
+            text_content.append(source_doc.evidence)
         
         return json.dumps(text_content, ensure_ascii=False)
 

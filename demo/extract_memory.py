@@ -1,8 +1,3 @@
-"""测试 V3 API HTTP 接口的记忆存储功能
-
-使用真实的 HTTP 请求调用 V3 API 的 /memorize 接口
-从 assistant_chat_zh.json 加载真实对话数据
-"""
 import asyncio
 import json
 from pathlib import Path
@@ -44,12 +39,10 @@ def load_conversation_data(file_path: str) -> tuple:
 
 async def test_v3_memorize_api():
     """测试 V3 API 的 /memorize 接口（单条消息存储）"""
-    
-    # 清空所有记忆数据
+
     await clear_all_memories()
     
-    # V3 API 基础 URL（根据实际部署修改）
-    base_url = "http://localhost:8001"  # 服务运行在 8001 端口
+    base_url = "http://localhost:8001" 
     memorize_url = f"{base_url}/api/v3/agentic/memorize"  # 正确的路由路径
     
     print("=" * 100)
@@ -64,20 +57,24 @@ async def test_v3_memorize_api():
         print(f"❌ 错误: {e}")
         return False
     
-    # ✨ 配置 Profile 提取场景
-    # "assistant" / "companion" -> 陪伴场景（提取兴趣、偏好、生活习惯）
-    # "group_chat" / "work" / "company" / None -> 工作/群聊场景（提取工作角色、技能、项目经验）
-    profile_scene = "assistant"  # 💡 根据实际场景修改这里
+    profile_scene = "assistant"
     
-    print(f"\n📤 准备发送 {len(test_messages)} 条消息到 V3 API")
+    print(f"\n📤 Sending {len(test_messages)} messages to V3 API")
     print(f"   URL: {memorize_url}")
-    print(f"   Profile 场景: {profile_scene}")
+    print(f"   Profile scene: {profile_scene}")
+    print()
+    print("ℹ️  How it works:")
+    print("   • Messages accumulate in Redis until boundary condition is met")
+    print("   • '⏳ Queued' = Message stored, waiting for extraction trigger")
+    print("   • '✓ Extracted' = Boundary detected, memories saved to database")
     print()
     
-    # 逐条发送消息（增加超时时间到120秒，因为LLM调用可能需要时间）
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    total_accumulated = 0
+    total_extracted = 0
+    
+    async with httpx.AsyncClient(timeout=500.0) as client:
         for idx, message in enumerate(test_messages, 1):
-            print(f"[{idx}/{len(test_messages)}] 发送消息: {message['sender']} - {message['content'][:30]}...")
+            print(f"[{idx}/{len(test_messages)}] {message['sender']}: {message['content'][:40]}...")
             
             # 为每条消息添加 scene 字段
             message['scene'] = profile_scene
@@ -91,41 +88,62 @@ async def test_v3_memorize_api():
                 
                 if response.status_code == 200:
                     result = response.json()
-                    status = result.get("status")
-                    message_text = result.get("message", "")
                     saved_count = result.get("result", {}).get("count", 0)
+                    status_info = result.get("result", {}).get("status_info", "unknown")
                     
-                    print(f"   ✅ 成功: {message_text} (保存了 {saved_count} 条记忆)")
+                    if status_info == "accumulated":
+                        total_accumulated += 1
+                        print(f"   ⏳ Queued")
+                    elif status_info == "extracted":
+                        total_extracted += saved_count
+                        print(f"   ✓ Extracted {saved_count} memories")
+                    else:
+                    
+                        if saved_count > 0:
+                            total_extracted += saved_count
+                            print(f"   ✓ Extracted {saved_count} memories")
+                        else:
+                            total_accumulated += 1
+                            print(f"   ⏳ Queued")
                 else:
-                    print(f"   ❌ 失败: HTTP {response.status_code}")
+                    print(f"   ✗ Failed: HTTP {response.status_code}")
                     print(f"      {response.text[:200]}")
                     
             except httpx.ConnectError:
-                print(f"   ❌ 连接失败: 无法连接到 {base_url}")
-                print(f"      请确保 V3 API 服务已启动")
+                print(f"   ✗ Connection failed: Unable to connect to {base_url}")
+                print(f"      Ensure V3 API service is running")
                 return False
             except httpx.ReadTimeout:
-                print(f"   ⚠️  超时: 处理时间超过180秒（这可能是因为历史数据过多）")
-                print(f"      建议: 跳过此消息，继续测试")
+                print(f"   ⚠ Timeout: Processing exceeded 500s")
+                print(f"      Skipping message and continuing...")
                 continue  # 跳过超时的消息，继续处理下一条
             except Exception as e:
-                print(f"   ❌ 错误: {type(e).__name__}: {e}")
+                print(f"   ✗ Error: {type(e).__name__}: {e}")
                 import traceback
                 traceback.print_exc()
                 return False
-            
-            # 延迟2秒，给LLM边界检测足够的时间（每次都要调用LLM判断）
-            await asyncio.sleep(2)
-    
+
     print("\n" + "=" * 100)
-    print("✅ V3 API HTTP 接口测试完成！")
-    print("\n📝 下一步：")
-    print("   运行检索测试: python src/bootstrap.py demo/v3_retrieve_memories.py")
+    print("✓ Test completed successfully")
+    print("\n📊 Summary:")
+    print(f"   Total messages:    {len(test_messages)}")
+    print(f"   Queued:            {total_accumulated}")
+    print(f"   Extracted:         {total_extracted}")
+    
+    if total_accumulated > 0 and total_extracted == 0:
+        print("\nℹ️  Note: All messages are queued, awaiting boundary detection trigger")
+        print(f"   Check queue: redis-cli -p 6479 -n 8 LLEN chat_history:{group_id}")
+    elif total_extracted > 0:
+        print("\n✓ Memory extraction successful")
+        print("   View in database:")
+        print("   • MemCells: db.memcells.find()")
+        print("   • Episodes: db.episodememory.find()")
+    
+    print("\n📝 Next steps:")
+    print("   Run retrieval test: python src/bootstrap.py demo/tools/test_retrieval_comprehensive.py")
     print("=" * 100)
     
     return True
 
-
 if __name__ == "__main__":
     asyncio.run(test_v3_memorize_api())
-

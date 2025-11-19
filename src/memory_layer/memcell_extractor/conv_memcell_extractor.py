@@ -255,31 +255,38 @@ class ConvMemCellExtractor(MemCellExtractor):
             new_messages=new_text,
             time_gap_info=time_gap_info,
         )
+        for i in range(5):
+            try:
+                resp = await self.llm_provider.generate(prompt)
+                print(
+                    f"[ConversationEpisodeBuilder] Boundary response length: {len(resp)} chars"
+                )
 
-        resp = await self.llm_provider.generate(prompt)
-        print(
-            f"[ConversationEpisodeBuilder] Boundary response length: {len(resp)} chars"
-        )
-
-        # Parse JSON response from LLM boundary detection
-        json_match = re.search(r"\{[^{}]*\}", resp, re.DOTALL)
-        if json_match:
-            data = json.loads(json_match.group())
-            return BoundaryDetectionResult(
-                should_end=data.get("should_end", False),
-                should_wait=data.get("should_wait", True),
-                reasoning=data.get("reasoning", "No reason provided"),
-                confidence=data.get("confidence", 1.0),
-                topic_summary=data.get("topic_summary", ""),
-            )
-        else:
-            return BoundaryDetectionResult(
-                should_end=False,
-                should_wait=True,
-                reasoning="Failed to parse LLM response",
-                confidence=1.0,
-                topic_summary="",
-            )
+                # Parse JSON response from LLM boundary detection
+                json_match = re.search(r"\{[^{}]*\}", resp, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    return BoundaryDetectionResult(
+                        should_end=data.get("should_end", False),
+                        should_wait=data.get("should_wait", True),
+                        reasoning=data.get("reasoning", "No reason provided"),
+                        confidence=data.get("confidence", 1.0),
+                        topic_summary=data.get("topic_summary", ""),
+                    )
+                else:
+                    return BoundaryDetectionResult(
+                        should_end=False,
+                        should_wait=True,
+                        reasoning="Failed to parse LLM response",
+                        confidence=1.0,
+                        topic_summary="",
+                    )
+                break
+            except Exception as e:
+                print('retry: ', i)
+                if i == 4:
+                    raise Exception("Boundary detection failed")
+                continue
 
     async def extract_memcell(
         self,
@@ -348,19 +355,29 @@ class ConvMemCellExtractor(MemCellExtractor):
 
             participants = self._extract_participant_ids(history_message_dict_list)
             # 创建 MemCell
+            # 优先使用边界检测的主题摘要；若为空，回退到最后一条新消息的文本；再不行用占位摘要
+            fallback_text = ""
+            if new_message_dict_list:
+                last_msg = new_message_dict_list[-1]
+                if isinstance(last_msg, dict):
+                    fallback_text = last_msg.get("content") or ""
+                elif isinstance(last_msg, str):
+                    fallback_text = last_msg
+            summary_text = boundary_detection_result.topic_summary or (fallback_text.strip()[:200] if fallback_text else "会话片段")
+
             memcell = MemCell(
                 event_id=str(uuid.uuid4()),
                 user_id_list=request.user_id_list,
                 original_data=history_message_dict_list,
                 timestamp=timestamp,
-                summary=boundary_detection_result.topic_summary,
+                summary=summary_text,
                 group_id=request.group_id,
                 participants=participants,  # 使用合并后的participants
                 type=self.raw_data_type,
             )
 
             # 自动触发情景记忆提取
-            max_retries = 3
+            max_retries = 5
             for attempt in range(max_retries):
                 try:
                     episode_request = EpisodeMemoryExtractRequest(
@@ -385,25 +402,24 @@ class ConvMemCellExtractor(MemCellExtractor):
                         # GROUP_EPISODE_GENERATION_PROMPT 模式：返回包含情景记忆的 MemCell
                         logger.info(f"✅ 成功生成情景记忆并存储到 MemCell 中")
                         # Attach embedding info to MemCell (episode preferred)
-                        try:
-                            text_for_embed = (
-                                episode_result.episode or episode_result.summary or ""
+                        
+                        text_for_embed = (
+                            episode_result.episode or episode_result.summary or ""
+                        )
+                        if text_for_embed:
+                            vs = get_vectorize_service()
+                            vec = await vs.get_embedding(text_for_embed)
+                            episode_result.extend = episode_result.extend or {}
+                            episode_result.extend["embedding"] = (
+                                vec.tolist()
+                                if hasattr(vec, "tolist")
+                                else list(vec)
                             )
-                            if text_for_embed:
-                                vs = get_vectorize_service()
-                                vec = await vs.get_embedding(text_for_embed)
-                                episode_result.extend = episode_result.extend or {}
-                                episode_result.extend["embedding"] = (
-                                    vec.tolist()
-                                    if hasattr(vec, "tolist")
-                                    else list(vec)
-                                )
-                                episode_result.extend["vector_model"] = (
-                                    vs.get_model_name()
-                                )
+                            episode_result.extend["vector_model"] = (
+                                vs.get_model_name()
+                            )
 
-                        except Exception:
-                            logger.debug("Embedding attach failed; continue without it")
+                        
                         
                         # 提交到聚类器（如果存在）
                         if hasattr(self, '_cluster_worker') and self._cluster_worker:

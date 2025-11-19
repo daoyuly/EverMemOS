@@ -6,7 +6,7 @@ Demonstrates how to use the memory system:
 
 Prerequisites:
     Start the API server first (in another terminal):
-    uv run python src/bootstrap.py start_server.py
+    uv run python src/bootstrap.py src/run.py --port 8001
 
 Run the demo:
     uv run python src/bootstrap.py demo/simple_demo.py
@@ -40,6 +40,14 @@ async def main():
     await memory.store("I also enjoy watching basketball, NBA is my favorite")
     await asyncio.sleep(2)
     
+    await memory.store("I will sleep now")
+    await asyncio.sleep(2)
+
+    await memory.store("The weather is good today")
+    await asyncio.sleep(2)
+    
+    await memory.store("The universe is expanding")
+    await asyncio.sleep(2)
     # ========== Step 2: Wait for Indexing ==========
     print("\n⏳ Step 2: Wait for Index Building")
     memory.print_separator()

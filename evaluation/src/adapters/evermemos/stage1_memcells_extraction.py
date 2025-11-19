@@ -81,7 +81,7 @@ def raw_data_load(locomo_data_path: str) -> Dict[str, List[RawData]]:
                 for key in conversation
                 if key.startswith("session_") and not key.endswith("_date_time")
             ],
-            key=lambda x: int(x.replace("session_", ""))
+            key=lambda x: int(x.replace("session_", "")),
         )
 
         print(f"   📅 Found {len(session_keys)} sessions")
@@ -161,7 +161,9 @@ async def memcell_extraction_from_conversation(
     use_semantic_extraction: bool = False,  # Enable semantic memory extraction
 ) -> list:
 
-    episode_extractor = EpisodeMemoryExtractor(llm_provider=llm_provider, use_eval_prompts=True)
+    episode_extractor = EpisodeMemoryExtractor(
+        llm_provider=llm_provider, use_eval_prompts=True
+    )
     memcell_list = []
     speakers = {
         raw_data.content["speaker_id"]
@@ -197,16 +199,16 @@ async def memcell_extraction_from_conversation(
             smart_mask_flag=smart_mask_flag,
             # group_id="group_1",
         )
-        for i in range(5):
+        for i in range(10):
             try:
                 result = await memcell_extractor.extract_memcell(
                     request,
-                    use_semantic_extraction=use_semantic_extraction  # Pass flag
+                    use_semantic_extraction=use_semantic_extraction,  # Pass flag
                 )
                 break
             except Exception as e:
                 print('retry: ', i)
-                if i == 4:
+                if i == 9:
                     raise Exception("Memcell extraction failed")
                 continue
         memcell_result = result[0]
@@ -298,38 +300,44 @@ async def process_single_conversation(
         # Create components based on configuration
         cluster_mgr = None
         profile_mgr = None
-        
+
         # Create MemCellExtractor
         raw_data_list = convert_conversation_to_raw_data_list(conversation)
-        memcell_extractor = ConvMemCellExtractor(llm_provider=llm_provider, use_eval_prompts=True)
-        
+        memcell_extractor = ConvMemCellExtractor(
+            llm_provider=llm_provider, use_eval_prompts=True
+        )
+
         # Conditional creation: Cluster manager (per-conversation)
         if config and config.enable_clustering:
             cluster_storage = InMemoryClusterStorage(
                 enable_persistence=True,
-                persist_dir=Path(save_dir) / "clusters" / f"conv_{conv_id}"
+                persist_dir=Path(save_dir) / "clusters" / f"conv_{conv_id}",
             )
             cluster_config = ClusterManagerConfig(
                 similarity_threshold=config.cluster_similarity_threshold,
                 max_time_gap_days=config.cluster_max_time_gap_days,
                 enable_persistence=True,
                 persist_dir=str(Path(save_dir) / "clusters" / f"conv_{conv_id}"),
-                clustering_algorithm="centroid"
+                clustering_algorithm="centroid",
             )
             cluster_mgr = ClusterManager(config=cluster_config, storage=cluster_storage)
             cluster_mgr.attach_to_extractor(memcell_extractor)
-        
+
         # Conditional creation: Profile manager
         if config and config.enable_profile_extraction and cluster_mgr:
             profile_storage = InMemoryProfileStorage(
                 enable_persistence=True,
                 persist_dir=Path(save_dir) / "profiles" / f"conv_{conv_id}",
-                enable_versioning=True
+                enable_versioning=True,
             )
-            
+
             # Set scenario type dynamically
-            scenario = ScenarioType.ASSISTANT if config.profile_scenario.lower() == "assistant" else ScenarioType.GROUP_CHAT
-            
+            scenario = (
+                ScenarioType.ASSISTANT
+                if config.profile_scenario.lower() == "assistant"
+                else ScenarioType.GROUP_CHAT
+            )
+
             profile_config = ProfileManagerConfig(
                 scenario=scenario,
                 min_confidence=config.profile_min_confidence,
@@ -337,21 +345,21 @@ async def process_single_conversation(
                 auto_extract=True,
                 batch_size=50,
             )
-            
+
             profile_mgr = ProfileManager(
                 llm_provider=llm_provider,
                 config=profile_config,
                 storage=profile_storage,
                 group_id=f"locomo_conv_{conv_id}",
-                group_name=f"LoComo Conversation {conv_id}"
+                group_name=f"LoComo Conversation {conv_id}",
             )
-            
+
             # Set minimum MemCells threshold
             profile_mgr._min_memcells_threshold = config.profile_min_memcells
-            
+
             # Connect components
             profile_mgr.attach_to_cluster_manager(cluster_mgr)
-        
+
         # Extract MemCells (enable semantic memory based on config)
         use_semantic = config.enable_semantic_extraction if config else False
         memcell_list = await memcell_extraction_from_conversation(
@@ -383,17 +391,16 @@ async def process_single_conversation(
         if event_log_extractor:
             # Prepare all memcells needing event log extraction
             memcells_with_episode = [
-                (idx, memcell) 
+                (idx, memcell)
                 for idx, memcell in enumerate(memcell_list)
                 if hasattr(memcell, 'episode') and memcell.episode
             ]
-            
+
             # Define single event log extraction task
             async def extract_single_event_log(idx: int, memcell):
                 try:
                     event_log = await event_log_extractor.extract_event_log(
-                        episode_text=memcell.episode, 
-                        timestamp=memcell.timestamp
+                        episode_text=memcell.episode, timestamp=memcell.timestamp
                     )
                     return idx, event_log
                 except Exception as e:
@@ -403,27 +410,33 @@ async def process_single_conversation(
                         style="yellow",
                     )
                     return idx, None
-            
+
             # Concurrent extraction of all event logs (using Semaphore to control concurrency)
-            sem = asyncio.Semaphore(20)  # Limit concurrency to 20 (avoid API rate limits)
-            
+            sem = asyncio.Semaphore(
+                20
+            )  # Limit concurrency to 20 (avoid API rate limits)
+
             async def extract_with_semaphore(idx, memcell):
                 async with sem:
                     return await extract_single_event_log(idx, memcell)
-            
-            print(f"\n🔥 Starting concurrent extraction of {len(memcells_with_episode)} event logs...")
+
+            print(
+                f"\n🔥 Starting concurrent extraction of {len(memcells_with_episode)} event logs..."
+            )
             event_log_tasks = [
-                extract_with_semaphore(idx, memcell) 
+                extract_with_semaphore(idx, memcell)
                 for idx, memcell in memcells_with_episode
             ]
             event_log_results = await asyncio.gather(*event_log_tasks)
-            
+
             # Link event logs back to corresponding memcells
             for original_idx, event_log in event_log_results:
                 if event_log:
                     memcell_list[original_idx].event_log = event_log
-            
-            print(f"✅ Event log extraction complete: {sum(1 for _, el in event_log_results if el)}/{len(event_log_results)} succeeded")
+
+            print(
+                f"✅ Event log extraction complete: {sum(1 for _, el in event_log_results if el)}/{len(event_log_results)} succeeded"
+            )
 
         # Save single conversation results
         memcell_dicts = []
@@ -444,23 +457,25 @@ async def process_single_conversation(
         cluster_stats = {}
         profile_stats = {}
         profile_count = 0
-        
+
         if cluster_mgr or profile_mgr:
             await asyncio.sleep(2)  # Give async tasks time to complete
-        
+
         # Export clustering results (if enabled)
         if cluster_mgr:
             cluster_output_dir = Path(save_dir) / "clusters" / f"conv_{conv_id}"
             cluster_output_dir.mkdir(parents=True, exist_ok=True)
             await cluster_mgr.export_clusters(cluster_output_dir)
             cluster_stats = cluster_mgr.get_stats()
-        
+
         # Export Profiles (if enabled)
         if profile_mgr:
             profile_output_dir = Path(save_dir) / "profiles" / f"conv_{conv_id}"
-            profile_count = await profile_mgr.export_profiles(profile_output_dir, include_history=True)
+            profile_count = await profile_mgr.export_profiles(
+                profile_output_dir, include_history=True
+            )
             profile_stats = profile_mgr.get_stats()
-        
+
         # Save statistics
         stats_output = {
             "conv_id": conv_id,
@@ -469,13 +484,13 @@ async def process_single_conversation(
             "profile_enabled": config.enable_profile_extraction if config else False,
             "semantic_enabled": config.enable_semantic_extraction if config else False,
         }
-        
+
         if cluster_stats:
             stats_output["clustering"] = cluster_stats
         if profile_stats:
             stats_output["profiles"] = profile_stats
             stats_output["profile_count"] = profile_count
-        
+
         stats_file = Path(save_dir) / "stats" / f"conv_{conv_id}_stats.json"
         stats_file.parent.mkdir(parents=True, exist_ok=True)
         with open(stats_file, "w") as f:
@@ -491,7 +506,9 @@ async def process_single_conversation(
     except Exception as e:
         # Show error message so we know the specific issue
         console = Console()
-        console.print(f"\n❌ Error processing conversation {conv_id}: {e}", style="bold red")
+        console.print(
+            f"\n❌ Error processing conversation {conv_id}: {e}", style="bold red"
+        )
         if progress_counter:
             progress_counter['completed'] += 1
             progress_counter['failed'] += 1
@@ -512,13 +529,12 @@ async def main():
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(os.path.join(CURRENT_DIR, config.experiment_name), exist_ok=True)
     os.makedirs(
-        os.path.join(CURRENT_DIR, config.experiment_name, "memcells"),
-        exist_ok=True,
+        os.path.join(CURRENT_DIR, config.experiment_name, "memcells"), exist_ok=True
     )
     save_dir = os.path.join(CURRENT_DIR, config.experiment_name, "memcells")
 
     console = Console()
-    
+
     # Print configuration info
     console.print("\n" + "=" * 60, style="bold cyan")
     console.print("Experiment Configuration", style="bold cyan")
@@ -526,25 +542,38 @@ async def main():
     console.print(f"Experiment name: {config.experiment_name}", style="cyan")
     console.print(f"Dataset path: {config.datase_path}", style="cyan")
     console.print(f"\nFeature flags:", style="bold yellow")
-    console.print(f"  - Semantic extraction: {'✅ Enabled' if config.enable_semantic_extraction else '❌ Disabled'}", 
-                  style="green" if config.enable_semantic_extraction else "dim")
-    console.print(f"  - Clustering: {'✅ Enabled' if config.enable_clustering else '❌ Disabled'}", 
-                  style="green" if config.enable_clustering else "dim")
-    console.print(f"  - Profile extraction: {'✅ Enabled' if config.enable_profile_extraction else '❌ Disabled'}", 
-                  style="green" if config.enable_profile_extraction else "dim")
-    
+    console.print(
+        f"  - Semantic extraction: {'✅ Enabled' if config.enable_semantic_extraction else '❌ Disabled'}",
+        style="green" if config.enable_semantic_extraction else "dim",
+    )
+    console.print(
+        f"  - Clustering: {'✅ Enabled' if config.enable_clustering else '❌ Disabled'}",
+        style="green" if config.enable_clustering else "dim",
+    )
+    console.print(
+        f"  - Profile extraction: {'✅ Enabled' if config.enable_profile_extraction else '❌ Disabled'}",
+        style="green" if config.enable_profile_extraction else "dim",
+    )
+
     if config.enable_clustering:
         console.print(f"\nClustering config:", style="bold")
-        console.print(f"  - Similarity threshold: {config.cluster_similarity_threshold}", style="dim")
-        console.print(f"  - Max time gap: {config.cluster_max_time_gap_days} days", style="dim")
-    
+        console.print(
+            f"  - Similarity threshold: {config.cluster_similarity_threshold}",
+            style="dim",
+        )
+        console.print(
+            f"  - Max time gap: {config.cluster_max_time_gap_days} days", style="dim"
+        )
+
     if config.enable_profile_extraction:
         console.print(f"\nProfile config:", style="bold")
         console.print(f"  - Scenario: {config.profile_scenario}", style="dim")
-        console.print(f"  - Min confidence: {config.profile_min_confidence}", style="dim")
+        console.print(
+            f"  - Min confidence: {config.profile_min_confidence}", style="dim"
+        )
         console.print(f"  - Min MemCells: {config.profile_min_memcells}", style="dim")
     console.print("=" * 60 + "\n", style="bold cyan")
-    
+
     # Checkpoint resume: check completed conversations
     completed_convs = set()
     for conv_id in raw_data_dict.keys():
@@ -556,28 +585,41 @@ async def main():
                     data = json.load(f)
                     if data and len(data) > 0:  # Ensure data available
                         completed_convs.add(conv_id)
-                        console.print(f"✅ Skipping completed conversation: {conv_id} ({len(data)} memcells)", style="green")
+                        console.print(
+                            f"✅ Skipping completed conversation: {conv_id} ({len(data)} memcells)",
+                            style="green",
+                        )
             except Exception as e:
-                console.print(f"⚠️  Conversation {conv_id} file corrupted, will reprocess: {e}", style="yellow")
-    
+                console.print(
+                    f"⚠️  Conversation {conv_id} file corrupted, will reprocess: {e}",
+                    style="yellow",
+                )
+
     # Filter conversations needing processing
     pending_raw_data_dict = {
-        conv_id: conv_data 
-        for conv_id, conv_data in raw_data_dict.items() 
+        conv_id: conv_data
+        for conv_id, conv_data in raw_data_dict.items()
         if conv_id not in completed_convs
     }
-    
-    console.print(f"\n📊 Total conversations found: {len(raw_data_dict)}", style="bold cyan")
+
+    console.print(
+        f"\n📊 Total conversations found: {len(raw_data_dict)}", style="bold cyan"
+    )
     console.print(f"✅ Completed: {len(completed_convs)}", style="bold green")
     console.print(f"⏳ Pending: {len(pending_raw_data_dict)}", style="bold yellow")
-    
+
     if len(pending_raw_data_dict) == 0:
-        console.print(f"\n🎉 All conversations completed, nothing to process!", style="bold green")
+        console.print(
+            f"\n🎉 All conversations completed, nothing to process!", style="bold green"
+        )
         return
-    
+
     total_messages = sum(len(conv) for conv in pending_raw_data_dict.values())
     console.print(f"📝 Pending messages: {total_messages}", style="bold blue")
-    console.print(f"🚀 Starting concurrent processing of remaining conversations...\n", style="bold green")
+    console.print(
+        f"🚀 Starting concurrent processing of remaining conversations...\n",
+        style="bold green",
+    )
 
     # Create shared LLM Provider and MemCell Extractor instances (solve connection race issue)
     console.print("⚙️ Initializing LLM Provider...", style="yellow")
@@ -595,13 +637,20 @@ async def main():
         max_tokens=config.llm_config[llm_service]["max_tokens"],
     )
 
-    # Create shared Event Log Extractor
-    console.print("⚙️ Initializing Event Log Extractor...", style="yellow")
-    shared_event_log_extractor = EventLogExtractor(llm_provider=shared_llm_provider)
+    # 创建共享的 Event Log Extractor（使用评估专用提示词）
+    console.print("⚙️ 初始化 Event Log Extractor...", style="yellow")
+    shared_event_log_extractor = EventLogExtractor(
+        llm_provider=shared_llm_provider,
+        use_eval_prompts=True,  # 评估系统使用 eval/ 提示词
+    )
 
     # 🔥 Use pending conversation dict (checkpoint resume)
     # Create progress counter
-    progress_counter = {'total': len(pending_raw_data_dict), 'completed': 0, 'failed': 0}
+    progress_counter = {
+        'total': len(pending_raw_data_dict),
+        'completed': 0,
+        'failed': 0,
+    }
 
     # Use Rich progress bar
     start_time = time.time()
@@ -684,7 +733,9 @@ async def main():
             results = await asyncio.gather(
                 *[
                     run_with_completion(task, conv_id)
-                    for (conv_id, _), task in zip(pending_raw_data_dict.items(), updated_tasks)
+                    for (conv_id, _), task in zip(
+                        pending_raw_data_dict.items(), updated_tasks
+                    )
                 ]
             )
         else:
@@ -707,7 +758,8 @@ async def main():
     console.print("\n" + "=" * 60, style="dim")
     console.print("📊 Processing completion statistics:", style="bold")
     console.print(
-        f"   ✅ Successfully processed: {successful_convs}/{len(raw_data_dict)}", style="green"
+        f"   ✅ Successfully processed: {successful_convs}/{len(raw_data_dict)}",
+        style="green",
     )
     console.print(f"   📝 Total memcells extracted: {len(all_memcells)}", style="blue")
     console.print(f"   ⏱️  Total time: {end_time - start_time:.2f}s", style="yellow")
@@ -730,20 +782,22 @@ async def main():
     total_profiles = 0
     cluster_stats_list = []
     profile_stats_list = []
-    
+
     stats_dir = Path(save_dir) / "stats"
     if stats_dir.exists():
         for stats_file in stats_dir.glob("conv_*_stats.json"):
             try:
                 with open(stats_file) as f:
                     conv_stats = json.load(f)
-                total_clusters += conv_stats.get("clustering", {}).get("total_clusters", 0)
+                total_clusters += conv_stats.get("clustering", {}).get(
+                    "total_clusters", 0
+                )
                 total_profiles += conv_stats.get("profile_count", 0)
                 cluster_stats_list.append(conv_stats.get("clustering", {}))
                 profile_stats_list.append(conv_stats.get("profiles", {}))
             except Exception:
                 pass
-    
+
     # Save processing summary (with clustering and Profile statistics)
     summary = {
         "total_conversations": len(raw_data_dict),
@@ -758,25 +812,35 @@ async def main():
         },
         "clustering_summary": {
             "total_clusters": total_clusters,
-            "avg_clusters_per_conv": total_clusters / successful_convs if successful_convs > 0 else 0,
+            "avg_clusters_per_conv": (
+                total_clusters / successful_convs if successful_convs > 0 else 0
+            ),
         },
         "profile_summary": {
             "total_profiles": total_profiles,
-            "avg_profiles_per_conv": total_profiles / successful_convs if successful_convs > 0 else 0,
+            "avg_profiles_per_conv": (
+                total_profiles / successful_convs if successful_convs > 0 else 0
+            ),
         },
     }
     summary_info_file = os.path.join(save_dir, "processing_summary.json")
     with open(summary_info_file, "w") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
     console.print(f"📊 Processing summary saved to: {summary_info_file}", style="green")
-    
+
     # Print clustering and Profile statistics
     console.print(f"\n📊 Clustering statistics:", style="bold cyan")
     console.print(f"   - Total clusters: {total_clusters}", style="cyan")
-    console.print(f"   - Average per conversation: {total_clusters / successful_convs if successful_convs > 0 else 0:.1f}", style="cyan")
+    console.print(
+        f"   - Average per conversation: {total_clusters / successful_convs if successful_convs > 0 else 0:.1f}",
+        style="cyan",
+    )
     console.print(f"\n👤 Profile statistics:", style="bold green")
     console.print(f"   - Total Profiles: {total_profiles}", style="green")
-    console.print(f"   - Average per conversation: {total_profiles / successful_convs if successful_convs > 0 else 0:.1f}\n", style="green")
+    console.print(
+        f"   - Average per conversation: {total_profiles / successful_convs if successful_convs > 0 else 0:.1f}\n",
+        style="green",
+    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
-"""MemCell 到 Milvus 同步服务
+"""MemCell 同步服务
 
-负责将 MemCell.episode 同步到 Milvus 向量数据库（群组记忆）。
+负责将 MemCell.episode 同步到 Milvus 和 Elasticsearch（群组记忆）。
 PersonalSemanticMemory 和 PersonalEventLog 由 PersonalMemorySyncService 处理。
 """
 
@@ -22,11 +22,11 @@ from common_utils.datetime_utils import get_now_with_timezone
 logger = logging.getLogger(__name__)
 
 
-@service(name="memcell_milvus_sync_service", primary=True)
-class MemCellMilvusSyncService:
-    """MemCell 到 Milvus 同步服务
+@service(name="memcell_sync_service", primary=True)
+class MemCellSyncService:
+    """MemCell 同步服务
     
-    只负责将 MemCell.episode 同步到 Milvus（群组记忆）。
+    负责将 MemCell.episode 同步到 Milvus 和 Elasticsearch（群组记忆）。
     PersonalSemanticMemory 和 PersonalEventLog 由 PersonalMemorySyncService 处理。
     """
 
@@ -54,7 +54,7 @@ class MemCellMilvusSyncService:
         else:
             self.vectorize_service = vectorize_service
         
-        logger.info("MemCellMilvusSyncService 初始化完成（仅同步 episode 到 Milvus + ES）")
+        logger.info("MemCellSyncService 初始化完成（同步 episode 到 Milvus + ES）")
 
     async def sync_memcell(
         self, memcell: MemCell, sync_to_es: bool = True, sync_to_milvus: bool = True
@@ -236,10 +236,10 @@ class MemCellMilvusSyncService:
         return total_stats
 
 
-def get_memcell_milvus_sync_service() -> MemCellMilvusSyncService:
-    """获取 MemCell Milvus 同步服务实例
+def get_memcell_sync_service() -> MemCellSyncService:
+    """获取 MemCell 同步服务实例
     
     通过依赖注入框架获取服务实例，支持单例模式。
     """
     from core.di import get_bean
-    return get_bean("memcell_milvus_sync_service")
+    return get_bean("memcell_sync_service")

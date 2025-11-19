@@ -11,6 +11,8 @@ from infra_layer.adapters.out.persistence.document.memory.conversation_status im
 from infra_layer.adapters.out.persistence.document.memory.cluster_state import ClusterState
 from infra_layer.adapters.out.persistence.document.memory.user_profile import UserProfile
 from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import EpisodicMemoryCollection
+from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import SemanticMemoryCollection
+from infra_layer.adapters.out.search.milvus.memory.event_log_collection import EventLogCollection
 from core.di import get_bean_by_type
 from component.redis_provider import RedisProvider
 
@@ -54,46 +56,52 @@ async def clear_all_memories(verbose: bool = True):
             print(f"      ✅ ClusterState: {cluster_count} 条")
             print(f"      ✅ UserProfile: {profile_count} 条")
         
-        # 2. 清空 Milvus
+        # 2. 清空 Milvus（三个独立的 Collection）
         if verbose:
             print("   🔍 清空 Milvus...")
         
         # 使用drop并重新创建Collection的方式清空（保留alias）
-        try:
-            from pymilvus import utility, Collection
-            milvus_collection = EpisodicMemoryCollection()
-            alias_name = milvus_collection._alias_name
-            
-            # 检查alias是否存在
-            if utility.has_collection(alias_name, using=milvus_collection._using):
-                # 获取当前alias指向的真实Collection名称
-                try:
-                    from pymilvus import connections
-                    conn = connections._fetch_handler(milvus_collection._using)
-                    desc = conn.describe_alias(alias_name)
-                    old_real_name = desc.get("collection_name") if isinstance(desc, dict) else None
-                except Exception:
-                    old_real_name = None
+        collections_to_clear = [
+            ("episodic_memory", EpisodicMemoryCollection()),
+            ("semantic_memory", SemanticMemoryCollection()),
+            ("event_log", EventLogCollection()),
+        ]
+        
+        for coll_name, milvus_collection in collections_to_clear:
+            try:
+                from pymilvus import utility, Collection
+                alias_name = milvus_collection._alias_name
                 
-                if old_real_name:
-                    # 1. 先创建新的Collection
-                    new_coll = milvus_collection.create_new_collection()
-                    if verbose:
-                        print(f"      ✅ 创建新Collection: {new_coll.name}")
+                # 检查alias是否存在
+                if utility.has_collection(alias_name, using=milvus_collection._using):
+                    # 获取当前alias指向的真实Collection名称
+                    try:
+                        from pymilvus import connections
+                        conn = connections._fetch_handler(milvus_collection._using)
+                        desc = conn.describe_alias(alias_name)
+                        old_real_name = desc.get("collection_name") if isinstance(desc, dict) else None
+                    except Exception:
+                        old_real_name = None
                     
-                    # 2. 切换alias到新Collection
-                    milvus_collection.switch_alias(new_coll, drop_old=True)
-                    if verbose:
-                        print(f"      ✅ 已切换alias '{alias_name}' 到新Collection并删除旧Collection '{old_real_name}'")
+                    if old_real_name:
+                        # 1. 先创建新的Collection
+                        new_coll = milvus_collection.create_new_collection()
+                        if verbose:
+                            print(f"      ✅ {coll_name}: 创建新Collection: {new_coll.name}")
+                        
+                        # 2. 切换alias到新Collection
+                        milvus_collection.switch_alias(new_coll, drop_old=True)
+                        if verbose:
+                            print(f"      ✅ {coll_name}: 已切换alias '{alias_name}' 到新Collection并删除旧Collection '{old_real_name}'")
+                    else:
+                        if verbose:
+                            print(f"      ⚠️  {coll_name}: 无法获取旧Collection名称")
                 else:
                     if verbose:
-                        print(f"      ⚠️  无法获取旧Collection名称")
-            else:
+                        print(f"      ✅ {coll_name}: Collection不存在，跳过清空")
+            except Exception as e:
                 if verbose:
-                    print(f"      ✅ Milvus Collection不存在，跳过清空")
-        except Exception as e:
-            if verbose:
-                print(f"      ⚠️  Milvus 清空跳过: {e}")
+                    print(f"      ⚠️  {coll_name} 清空跳过: {e}")
         
         # 3. 清空 Elasticsearch
         if verbose:
@@ -101,14 +109,17 @@ async def clear_all_memories(verbose: bool = True):
         
         try:
             from component.elasticsearch_client_factory import ElasticsearchClientFactory
+            from infra_layer.adapters.out.search.elasticsearch.memory.episodic_memory import EpisodicMemoryDoc
             
             # 获取ES客户端连接
             es_factory = get_bean_by_type(ElasticsearchClientFactory)
             es_client_wrapper = await es_factory.get_default_client()
             es_client = es_client_wrapper.async_client
             
+            # 获取实际的 alias 名称（带后缀）
+            alias_name = EpisodicMemoryDoc._index._name
+            
             # 获取alias指向的所有索引
-            alias_name = "episodic-memory"
             alias_info = await es_client.indices.get_alias(name=alias_name)
             
             total_deleted = 0
@@ -193,43 +204,54 @@ async def clear_all_memories(verbose: bool = True):
                 if remaining_profile > 0:
                     print(f"      - UserProfile: {remaining_profile} 条")
             
-            # 2. 验证 Milvus (检查Collection中的数据量)
+            # 2. 验证 Milvus (检查3个Collection中的数据量)
             try:
                 from pymilvus import utility
-                milvus_collection = EpisodicMemoryCollection()
-                alias_name = milvus_collection._alias_name
                 
-                # 检查alias是否存在
-                if utility.has_collection(alias_name):
-                    # Collection存在，查询数量
-                    milvus_collection.ensure_collection_desc()
-                    collection = milvus_collection.async_collection()
-                    milvus_count = collection.num_entities
-                    if milvus_count == 0:
-                        print(f"   ✅ Milvus: 0 条向量")
-                    else:
-                        print(f"   ⚠️  Milvus 仍有 {milvus_count} 条向量")
-                else:
-                    # Collection不存在
-                    print(f"   ⚠️  Milvus Collection 不存在")
+                collections_to_verify = [
+                    ("episodic_memory", EpisodicMemoryCollection()),
+                    ("semantic_memory", SemanticMemoryCollection()),
+                    ("event_log", EventLogCollection()),
+                ]
+                
+                total_milvus_count = 0
+                for coll_name, milvus_collection in collections_to_verify:
+                    try:
+                        alias_name = milvus_collection._alias_name
+                        
+                        # 检查alias是否存在
+                        if utility.has_collection(alias_name):
+                            # Collection存在，查询数量
+                            milvus_collection.ensure_collection_desc()
+                            collection = milvus_collection.async_collection()
+                            count = collection.num_entities
+                            total_milvus_count += count
+                            if count > 0:
+                                print(f"   ⚠️  Milvus {coll_name} 仍有 {count} 条向量")
+                    except Exception as e:
+                        if "can't find collection" not in str(e):
+                            print(f"   ⚠️  Milvus {coll_name} 验证跳过: {e}")
+                
+                if total_milvus_count == 0:
+                    print(f"   ✅ Milvus: 0 条向量")
             except Exception as e:
-                # 如果是 "can't find collection" 错误，说明Collection被删除
-                if "can't find collection" in str(e):
-                    print(f"   ⚠️  Milvus Collection 不存在")
-                else:
-                    print(f"   ⚠️  Milvus 验证跳过: {e}")
+                print(f"   ⚠️  Milvus 验证跳过: {e}")
             
             # 3. 验证 Elasticsearch
             try:
                 from component.elasticsearch_client_factory import ElasticsearchClientFactory
+                from infra_layer.adapters.out.search.elasticsearch.memory.episodic_memory import EpisodicMemoryDoc
                 
                 # 获取ES客户端连接
                 es_factory = get_bean_by_type(ElasticsearchClientFactory)
                 es_client_wrapper = await es_factory.get_default_client()
                 es_client = es_client_wrapper.async_client
                 
+                # 获取实际的 alias 名称（带后缀）
+                actual_alias = EpisodicMemoryDoc._index._name
+                
                 # 直接使用async_client的count API
-                response = await es_client.count(index="episodic-memory")
+                response = await es_client.count(index=actual_alias)
                 es_count = response.get('count', 0) if isinstance(response, dict) else response.get('count', 0) if hasattr(response, 'get') else 0
                 
                 if es_count == 0:
