@@ -34,7 +34,7 @@ class RetrievalTester:
         
         # 测试配置
         self.data_sources = ["episode", "event_log", "semantic_memory", "profile"]
-        self.memory_scopes = ["all", "personal", "group"]
+        self.memory_scopes = ["personal", "group"]
         self.retrieval_modes = ["embedding", "bm25", "rrf"]
         
         # 测试结果统计
@@ -60,7 +60,7 @@ class RetrievalTester:
         Args:
             query: 查询文本
             data_source: 数据源（episode/event_log/semantic_memory/profile）
-            memory_scope: 记忆范围（all/personal/group）
+            memory_scope: 记忆范围（personal/group）
             retrieval_mode: 检索模式（embedding/bm25/rrf）
             user_id: 用户ID
             group_id: 群组ID
@@ -76,15 +76,13 @@ class RetrievalTester:
         payload = {
             "query": query,
             "user_id": user_id,
+            "group_id": group_id,
             "top_k": top_k,
             "data_source": data_source,
-            "memory_scope": memory_scope,
             "retrieval_mode": retrieval_mode,
         }
         
         # 添加可选参数
-        if group_id:
-            payload["group_id"] = group_id
         if current_time and data_source == "semantic_memory":
             payload["current_time"] = current_time
         
@@ -111,7 +109,6 @@ class RetrievalTester:
                                 "status": "✅ 成功",
                                 "query": query,
                                 "data_source": data_source,
-                                "memory_scope": memory_scope,
                                 "retrieval_mode": retrieval_mode,
                                 "count": 0,
                                 "latency_ms": latency,
@@ -129,7 +126,6 @@ class RetrievalTester:
                             "status": "⚠️ 空结果",
                             "query": query,
                             "data_source": data_source,
-                            "memory_scope": memory_scope,
                             "retrieval_mode": retrieval_mode,
                             "count": 0,
                             "latency_ms": latency,
@@ -143,7 +139,6 @@ class RetrievalTester:
                         "status": "✅ 成功",
                         "query": query,
                         "data_source": data_source,
-                        "memory_scope": memory_scope,
                         "retrieval_mode": retrieval_mode,
                         "count": len(memories),
                         "latency_ms": latency,
@@ -257,16 +252,20 @@ class RetrievalTester:
                     data_source="profile",
                     memory_scope="group",
                     retrieval_mode="rrf",
-                    user_id=user_id,
+                    user_id="user_001",
                     group_id=profile_gid,
                     current_time=current_time,
                 )
                 self.test_results.append(result)
-                await asyncio.sleep(0.5)
                 continue
             
             for memory_scope in self.memory_scopes:
-                
+                if memory_scope == "group":
+                    user_id = None
+                    group_id = "chat_user_001_assistant"
+                if memory_scope == "personal":
+                    user_id = "user_001"
+                    group_id = "chat_user_001_assistant"
                 print(f"\n  📁 记忆范围: {memory_scope}")
                 
                 for retrieval_mode in self.retrieval_modes:
@@ -279,8 +278,8 @@ class RetrievalTester:
                             continue
                     result = await self.test_retrieval(
                         query=effective_query,
-                        data_source=data_source,
                         memory_scope=memory_scope,
+                        data_source=data_source,
                         retrieval_mode=retrieval_mode,
                         user_id=user_id,
                         group_id=effective_group_id,
@@ -289,7 +288,6 @@ class RetrievalTester:
                     self.test_results.append(result)
                     
                     # 短暂延迟，避免请求过快
-                    await asyncio.sleep(0.5)
     
     def print_summary(self):
         """打印测试总结"""
@@ -428,7 +426,7 @@ async def main():
     result_current = await tester.test_retrieval(
         query="北京美食推荐",
         data_source="semantic_memory",
-        memory_scope="all",
+        memory_scope="personal",
         retrieval_mode="rrf",
         user_id="user_001",  # 使用实际数据库中的 user_id
         current_time=datetime.now().strftime("%Y-%m-%d"),
@@ -439,7 +437,7 @@ async def main():
     result_future = await tester.test_retrieval(
         query="北京美食推荐",
         data_source="semantic_memory",
-        memory_scope="all",
+        memory_scope="personal",
         retrieval_mode="rrf",
         user_id="user_001",  # 使用实际数据库中的 user_id
         current_time="2027-12-31",  # 未来时间
@@ -451,7 +449,7 @@ async def main():
     result_past = await tester.test_retrieval(
         query="北京美食推荐",
         data_source="semantic_memory",
-        memory_scope="all",
+        memory_scope="personal",
         retrieval_mode="rrf",
         user_id="user_001",  # 使用实际数据库中的 user_id
         current_time="2024-01-01",  # 过去时间

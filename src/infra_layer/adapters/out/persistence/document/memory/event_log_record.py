@@ -22,6 +22,7 @@ class EventLogRecord(DocumentBase, AuditBase):
     """
 
     # 核心字段
+    id: str = Field(..., description="原子事实ID")
     user_id: Optional[str] = Field(default=None, description="用户ID，个人事件必填")
     user_name: Optional[str] = Field(default=None, description="用户名称")
     group_id: Optional[str] = Field(default=None, description="群组ID")
@@ -49,6 +50,7 @@ class EventLogRecord(DocumentBase, AuditBase):
         json_encoders={datetime: lambda dt: dt.isoformat()},
         json_schema_extra={
             "example": {
+                "id": "atomic_fact_001",
                 "user_id": "user_12345",
                 "user_name": "Alice",
                 "atomic_fact": "用户在2024年1月1日去了成都，喜欢当地的川菜。",

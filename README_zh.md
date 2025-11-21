@@ -493,7 +493,6 @@ EverMemOS 提供两种检索模式：**轻量级检索**（快速）和 **Agenti
 | `query` | 是* | 自然语言查询（*profile 数据源时可选） |
 | `user_id` | 否 | 用户 ID |
 | `data_source` | 是 | `episode` / `event_log` / `semantic_memory` / `profile` |
-| `memory_scope` | 是 | `personal`（仅 user_id） / `group`（仅 group_id） / `all`（两者） |
 | `retrieval_mode` | 是 | `embedding` / `bm25` / `rrf`（推荐） |
 | `group_id` | 否 | 群组 ID |
 | `current_time` | 否 | 过滤有效期内的 semantic_memory（格式: YYYY-MM-DD） |
@@ -511,7 +510,6 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "用户喜欢什么运动",
     "user_id": "user_001",
     "data_source": "episode",
-    "memory_scope": "personal",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -530,7 +528,6 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "讨论项目进展",
     "group_id": "project_team_001",
     "data_source": "episode",
-    "memory_scope": "group",
     "retrieval_mode": "rrf"
   }'
 ```

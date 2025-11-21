@@ -66,7 +66,7 @@ from infra_layer.adapters.out.persistence.document.memory.event_log_record impor
     EventLogRecord,
 )
 logger = get_logger(__name__)
-
+import uuid
 # ==================== 时间处理函数 ====================
 
 
@@ -323,6 +323,7 @@ def _convert_semantic_memory_to_doc(
         current_time = get_now_with_timezone()
 
     return SemanticMemoryRecord(
+        id=semantic_memory.id,
         user_id=getattr(semantic_memory, "user_id", None),
         user_name=getattr(
             semantic_memory, "user_name", getattr(parent_doc, "user_name", None)
@@ -374,6 +375,7 @@ def _convert_event_log_to_docs(
             vector = vector.tolist()
 
         doc = EventLogRecord(
+            id=f"atomic_fact_{uuid.uuid4().hex}",
             user_id=event_log.user_id,
             user_name=event_log.user_name or '',
             atomic_fact=fact,

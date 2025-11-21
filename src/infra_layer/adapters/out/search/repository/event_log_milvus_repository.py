@@ -16,7 +16,6 @@ from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
 from core.observation.logger import get_logger
 from common_utils.datetime_utils import get_now_with_timezone
 from core.di.decorators import repository
-from memory_layer.memory_scope import MemoryScope
 
 logger = get_logger(__name__)
 
@@ -151,7 +150,6 @@ class EventLogMilvusRepository(BaseMilvusRepository[EventLogCollection]):
         score_threshold: float = 0.0,
         radius: Optional[float] = None,
         participant_user_id: Optional[str] = None,
-        memory_scope: MemoryScope = MemoryScope.ALL,
     ) -> List[Dict[str, Any]]:
         """
         向量相似性搜索
@@ -167,7 +165,6 @@ class EventLogMilvusRepository(BaseMilvusRepository[EventLogCollection]):
             limit: 返回结果数量
             score_threshold: 相似度阈值
             participant_user_id: 群组检索时额外要求参与者包含该用户
-            memory_scope: 记忆范围 ("all" | "personal" | "group")
 
         Returns:
             搜索结果列表
@@ -176,18 +173,13 @@ class EventLogMilvusRepository(BaseMilvusRepository[EventLogCollection]):
             # 构建过滤表达式
             filter_expr = []
             
-            # 根据 memory_scope 处理 user_id 过滤
-            if memory_scope == MemoryScope.PERSONAL:
-                # 个人记忆: user_id != ""
-                if user_id:
-                    filter_expr.append(f'user_id == "{user_id}"')
-                else:
-                    # 如果没有传 user_id,则过滤所有非空 user_id
-                    filter_expr.append('user_id != ""')
-            elif memory_scope == MemoryScope.GROUP:
-                # 群组记忆: user_id == ""
+            if user_id:
+                filter_expr.append(f'user_id == "{user_id}"')
+            else:
+                # 如果没有传 user_id,则过滤所有非空 user_id
                 filter_expr.append('user_id == ""')
-            # else: MemoryScope.ALL - 不过滤 user_id
+            if group_id:
+                filter_expr.append(f'group_id == "{group_id}"')
             
             if participant_user_id:
                 filter_expr.append(
@@ -240,7 +232,6 @@ class EventLogMilvusRepository(BaseMilvusRepository[EventLogCollection]):
             logger.info(
                 f"Milvus 原始返回: {raw_hit_count} 条结果, "
                 f"limit={limit}, filter_str={filter_str}, "
-                f"memory_scope={memory_scope}"
             )
             
             for hits in results:

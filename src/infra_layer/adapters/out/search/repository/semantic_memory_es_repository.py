@@ -17,7 +17,6 @@ from core.observation.logger import get_logger
 from common_utils.datetime_utils import get_now_with_timezone
 from common_utils.text_utils import SmartTextParser
 from core.di.decorators import repository
-from memory_layer.memory_scope import MemoryScope
 
 logger = get_logger(__name__)
 
@@ -83,7 +82,6 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
         event_id: str,
         user_id: str,
         user_name: str,
-        group_name: str,
         timestamp: datetime,
         content: str,
         search_content: List[str],
@@ -150,7 +148,6 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
                 search_content=search_content,
                 evidence=evidence or '',
                 group_id=group_id,
-                group_name=group_name or '',
                 participants=participants or [],
                 keywords=[],
                 subject='',
@@ -187,7 +184,6 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
         explain: bool = False,
         participant_user_id: Optional[str] = None,
         current_time: Optional[datetime] = None,
-        memory_scope: MemoryScope = MemoryScope.ALL,
     ) -> Dict[str, Any]:
         """
         使用 elasticsearch-dsl 的统一搜索接口，支持多词查询和全面过滤
@@ -217,18 +213,13 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             # 构建过滤条件
             filter_queries = []
             
-            # 根据 memory_scope 处理 user_id 过滤
-            if memory_scope == MemoryScope.PERSONAL:
-                # 个人记忆: user_id != ""
-                if user_id:
-                    filter_queries.append(Q("term", user_id=user_id))
-                else:
-                    # 如果没有传 user_id,则过滤所有非空 user_id
-                    filter_queries.append(Q("bool", must_not=Q("term", user_id="")))
-            elif memory_scope == MemoryScope.GROUP:
-                # 群组记忆: user_id == ""
+            if user_id and user_id != "":
+                filter_queries.append(Q("term", user_id=user_id))
+            elif user_id is None or user_id == "":
+                # 只保留 user_id="" 的文档(群组记忆)
                 filter_queries.append(Q("term", user_id=""))
-            # else: MemoryScope.ALL - 不过滤 user_id
+            if group_id and group_id != "":
+                filter_queries.append(Q("term", group_id=group_id))
             
             if group_id:
                 filter_queries.append(Q("term", group_id=group_id))

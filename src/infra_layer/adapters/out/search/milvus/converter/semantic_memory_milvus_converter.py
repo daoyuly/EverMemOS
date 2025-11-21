@@ -64,18 +64,12 @@ class SemanticMemoryMilvusConverter(BaseMilvusConverter[SemanticMemoryCollection
             # 构建搜索内容
             search_content = cls._build_search_content(source_doc)
             
-            # 生成 ID (Milvus 主键不能为空)
-            if source_doc.id:
-                semantic_id = str(source_doc.id)
-            else:
-                import uuid
-                semantic_id = f"sem_{uuid.uuid4().hex}"
-                logger.warning(f"MongoDB 文档缺少 id,生成临时 ID: {semantic_id}")
+        
             
             # 创建 Milvus 实体字典
             milvus_entity = {
                 # 基础标识字段
-                "id": semantic_id,
+                "id": source_doc.id,
                 "user_id": source_doc.user_id or "",
                 "group_id": source_doc.group_id or "",
                 "participants": source_doc.participants if source_doc.participants else [],

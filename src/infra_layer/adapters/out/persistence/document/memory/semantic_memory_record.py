@@ -23,6 +23,7 @@ class SemanticMemoryRecord(DocumentBase, AuditBase):
     """
 
     # 核心字段
+    id: str = Field(..., description="语义记忆ID")
     user_id: Optional[str] = Field(default=None, description="用户ID，个人记忆必填，群组记忆可为空")
     user_name: Optional[str] = Field(default=None, description="用户名称")
     group_id: Optional[str] = Field(default=None, description="群组ID")
@@ -52,6 +53,7 @@ class SemanticMemoryRecord(DocumentBase, AuditBase):
         json_encoders={datetime: lambda dt: dt.isoformat()},
         json_schema_extra={
             "example": {
+                "id": "semantic_memory_001",
                 "user_id": "user_12345",
                 "user_name": "Alice",
                 "content": "用户喜欢吃川菜，尤其是麻辣火锅",

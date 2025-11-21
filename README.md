@@ -496,7 +496,6 @@ EverMemOS provides two retrieval modes: **Lightweight** (fast) and **Agentic** (
 | `query` | Yes* | Natural language query (*optional for profile data source) |
 | `user_id` | No | User ID |
 | `data_source` | Yes | `episode` / `event_log` / `semantic_memory` / `profile` |
-| `memory_scope` | Yes | `personal` (user_id only) / `group` (group_id only) / `all` (both) |
 | `retrieval_mode` | Yes | `embedding` / `bm25` / `rrf` (recommended) |
 | `group_id` | No | Group ID |
 | `current_time` | No | Filter valid semantic_memory (format: YYYY-MM-DD) |
@@ -514,7 +513,6 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "What sports does the user like?",
     "user_id": "user_001",
     "data_source": "episode",
-    "memory_scope": "personal",
     "retrieval_mode": "rrf"
   }'
 ```
@@ -533,7 +531,6 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
     "query": "Discuss project progress",
     "group_id": "project_team_001",
     "data_source": "episode",
-    "memory_scope": "group",
     "retrieval_mode": "rrf"
   }'
 ```

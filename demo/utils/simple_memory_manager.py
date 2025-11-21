@@ -251,7 +251,6 @@ class SimpleMemoryManager:
             "top_k": top_k,
             "data_source": "episode",
             "retrieval_mode": mode,
-            "memory_scope": "group",
             "group_id": self.group_id,
         }
 

@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from memory_layer.types import Memory, RawDataType
 from biz_layer.mem_memorize import memorize
 from memory_layer.memory_manager import MemorizeRequest
-from memory_layer.memory_scope import MemoryScope
 from .fetch_mem_service import get_fetch_memory_service
 from .dtos.memory_query import (
     FetchMemRequest,
@@ -1193,7 +1192,6 @@ class MemoryManager:
         top_k: int = 20,
         retrieval_mode: str = "rrf",  # "embedding" | "bm25" | "rrf"
         data_source: str = "episode",  # "episode" | "event_log" | "semantic_memory" | "profile"
-        memory_scope: MemoryScope = MemoryScope.ALL,
         current_time: Optional[datetime] = None,  # 当前时间，用于过滤有效期内的语义记忆
         radius: Optional[float] = None,  # COSINE 相似度阈值
     ) -> Dict[str, Any]:
@@ -1215,10 +1213,6 @@ class MemoryManager:
                 - "event_log": 从 event_log 检索
                 - "semantic_memory": 从语义记忆检索
                 - "profile": 直接按 user_id + group_id 检索档案
-            memory_scope: 记忆范围
-                - "all": 所有记忆（默认，个人 + 群组）
-                - "personal": 仅个人记忆（group_id 为空）
-                - "group": 仅群组记忆（group_id 不为空）
             current_time: 当前时间，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
 
         Returns:
@@ -1246,7 +1240,6 @@ class MemoryManager:
             retrieval_mode=retrieval_mode,
             data_source=data_source,
             start_time=start_time,
-            memory_scope=memory_scope,  # 传递给 Repository 用于判断
             current_time=current_time,
             radius=radius,
         )
@@ -1260,7 +1253,6 @@ class MemoryManager:
         retrieval_mode: str = "rrf",
         data_source: str = "memcell",
         start_time: float = None,
-        memory_scope: MemoryScope = MemoryScope.ALL,
         current_time: Optional[datetime] = None,
         radius: Optional[float] = None,
     ) -> Dict[str, Any]:
@@ -1275,7 +1267,6 @@ class MemoryManager:
             retrieval_mode: 检索模式（embedding/bm25/rrf）
             data_source: 数据源（memcell/event_log/semantic_memory）
             start_time: 开始时间（用于计算耗时）
-            memory_scope: 记忆范围（all/personal/group）
             current_time: 当前时间，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
             radius: COSINE 相似度阈值（仅对非语义记忆有效）
 
@@ -1318,9 +1309,6 @@ class MemoryManager:
                 # 为了解决 EventLog/SemanticMemory 只返回1条的问题,大幅增加 limit
                 retrieval_limit = min(max(top_k * 200, 1000), 16384)  # 至少 1000 条,最多 16384 条
 
-                # 根据 memory_scope 决定如何过滤
-                # Repository 会根据 memory_scope 参数来决定过滤逻辑
-                # 这里直接传递原始的 user_id 和 group_id
                 
                 # 根据 data_source 调用不同的 vector_search 参数
                 milvus_kwargs = dict(
@@ -1329,7 +1317,6 @@ class MemoryManager:
                     group_id=group_id,
                     limit=retrieval_limit,
                     radius=radius,
-                    memory_scope=memory_scope,  # 传递给 Milvus Repository
                 )
                 if data_source == "semantic_memory":
                     milvus_kwargs["current_time"] = current_time
@@ -1337,7 +1324,7 @@ class MemoryManager:
                 logger.info(
                     f"调用 Milvus 检索: data_source={data_source}, "
                     f"limit={retrieval_limit}, radius={radius}, "
-                    f"user_id={user_id}, group_id={group_id}, memory_scope={memory_scope}"
+                    f"user_id={user_id}, group_id={group_id}"
                 )
                 milvus_results = await milvus_repo.vector_search(**milvus_kwargs)
 
@@ -1357,7 +1344,7 @@ class MemoryManager:
                     f"Milvus 检索完成: data_source={data_source}, "
                     f"结果数={len(embedding_results)}, "
                     f"query={query[:30]}, "
-                    f"user_id={user_id}, group_id={group_id}, memory_scope={memory_scope}"
+                    f"user_id={user_id}, group_id={group_id}"
                 )
                 embedding_count = len(embedding_results)
 
@@ -1403,7 +1390,6 @@ class MemoryManager:
                     user_id=user_id,
                     group_id=group_id,
                     size=retrieval_size,
-                    memory_scope=memory_scope,  # 传递给 ES Repository
                 )
                 if data_source == "semantic_memory" and current_time is not None:
                     es_kwargs["current_time"] = current_time

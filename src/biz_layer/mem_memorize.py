@@ -121,6 +121,7 @@ def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
 
     if isinstance(raw_item, SemanticMemoryItem):
         return SemanticMemoryItem(
+            id=raw_item.id,
             content=raw_item.content,
             evidence=getattr(raw_item, "evidence", None),
             start_time=getattr(raw_item, "start_time", None),
@@ -132,6 +133,7 @@ def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
 
     if isinstance(raw_item, dict):
         return SemanticMemoryItem(
+            id=raw_item.get("id"),
             content=raw_item.get("content", ""),
             evidence=raw_item.get("evidence"),
             start_time=raw_item.get("start_time"),
@@ -1011,6 +1013,7 @@ async def memorize(request: MemorizeRequest) -> List[Memory]:
             if memcell.event_log:
                 event_log_obj = _clone_event_log(memcell.event_log)
                 if event_log_obj and event_log_obj.atomic_fact:
+                    event_log_obj.id = f"atomic_fact_{uuid.uuid4().hex}"
                     event_log_obj.parent_event_id = group_parent_event_id
                     event_log_obj.user_id = ""
                     event_log_obj.group_id = memcell.group_id

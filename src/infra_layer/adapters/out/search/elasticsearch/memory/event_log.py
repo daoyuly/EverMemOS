@@ -73,7 +73,6 @@ class EventLogDoc(AliasDoc("event-log", number_of_shards=3)):
 
     # 分类和标签字段
     group_id = e_field.Keyword()  # 群组ID
-    group_name = e_field.Keyword()  # 群组名称
     participants = e_field.Keyword(multi=True)
 
     type = e_field.Keyword()  # Conversation/Email/Notion等

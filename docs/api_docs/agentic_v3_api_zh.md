@@ -141,7 +141,6 @@ Agentic API 是 MemSys 的智能记忆系统接口，提供记忆存储和智能
   "top_k": 20,
   "retrieval_mode": "rrf",
   "data_source": "episode",
-  "memory_scope": "all",
   "current_time": "2025-01-15",
   "radius": 0.6
 }
@@ -158,7 +157,6 @@ Agentic API 是 MemSys 的智能记忆系统接口，提供记忆存储和智能
 | top_k | integer | 否 | 20 | 返回结果数量 |
 | retrieval_mode | string | 否 | rrf | 检索模式：rrf/embedding/bm25 |
 | data_source | string | 否 | episode | 数据源：episode/event_log/semantic_memory/profile |
-| memory_scope | string | 否 | all | 记忆范围：all/personal/group |
 | current_time | string | 否 | - | 当前时间（YYYY-MM-DD格式，用于语义记忆有效期过滤） |
 | radius | float | 否 | 0.6 | COSINE 相似度阈值，范围 [-1, 1] |
 
@@ -732,13 +730,8 @@ asyncio.run(agentic_retrieve())
 - `semantic_memory`：适合检索抽象的长期记忆
 - `profile`：适合获取用户或群组的档案信息
 
-### 4. memory_scope 参数如何使用？
 
-- `all`（默认）：同时使用 user_id 和 group_id 过滤，获取特定用户在特定群组中的记忆
-- `personal`：只使用 user_id 过滤，获取用户的所有个人记忆（跨群组）
-- `group`：只使用 group_id 过滤，获取群组中所有成员的记忆
-
-### 5. radius 参数如何调整？
+### 4. radius 参数如何调整？
 
 `radius` 是 COSINE 相似度阈值，范围 [-1, 1]：
 
@@ -752,7 +745,7 @@ asyncio.run(agentic_retrieve())
 - 常规搜索：使用 0.6（默认）
 - 广泛搜索：使用 0.5
 
-### 6. 如何配置 LLM for Agentic 检索？
+### 5. 如何配置 LLM for Agentic 检索？
 
 有两种方式配置 LLM：
 
@@ -777,7 +770,7 @@ export LLM_MODEL="qwen/qwen3-235b-a22b-2507"
 }
 ```
 
-### 7. 如何处理消息时间？
+### 6. 如何处理消息时间？
 
 `create_time` 必须使用 ISO 8601 格式，支持带时区：
 
@@ -795,7 +788,7 @@ export LLM_MODEL="qwen/qwen3-235b-a22b-2507"
 }
 ```
 
-### 8. 检索时如何过滤时间范围？
+### 7. 检索时如何过滤时间范围？
 
 使用 `time_range_days` 参数指定最近几天的记忆：
 
@@ -806,7 +799,7 @@ export LLM_MODEL="qwen/qwen3-235b-a22b-2507"
 }
 ```
 
-### 9. 如何处理 profile 检索？
+### 8. 如何处理 profile 检索？
 
 档案检索（data_source=profile）不需要 query 参数，只需提供 user_id 和 group_id：
 
@@ -818,7 +811,7 @@ export LLM_MODEL="qwen/qwen3-235b-a22b-2507"
 }
 ```
 
-### 10. 接口调用频率有限制吗？
+### 9. 接口调用频率有限制吗？
 
 目前没有硬性限制，但建议：
 - **存储接口**：每秒不超过 100 次请求
