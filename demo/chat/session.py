@@ -233,7 +233,6 @@ class ChatSession:
             "top_k": self.config.top_k_memories,
             "data_source": self.data_source,  # episode / event_log
             "retrieval_mode": self.retrieval_mode,  # rrf / embedding / bm25
-            "memory_scope": "all",  # 检索所有记忆（个人 + 群组）
         }
         
         # 调试日志（仅在开发环境显示）

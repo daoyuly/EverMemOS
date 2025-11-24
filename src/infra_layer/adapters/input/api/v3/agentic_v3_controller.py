@@ -254,7 +254,6 @@ class AgenticV3Controller(BaseController):
           "top_k": 20,
           "retrieval_mode": "rrf",
           "data_source": "episode",
-          "memory_scope": "all"
         }
         ```
         
@@ -273,10 +272,6 @@ class AgenticV3Controller(BaseController):
           * "event_log": 从 event_log.atomic_fact 检索
           * "semantic_memory": 从语义记忆检索
           * "profile": 仅需 user_id + group_id 的档案检索（query 可空）
-        - **memory_scope** (可选): 记忆范围
-          * "all": 所有记忆（默认，同时使用 user_id 和 group_id 参数过滤）
-          * "personal": 仅个人记忆（只使用 user_id 参数过滤，不使用 group_id）
-          * "group": 仅群组记忆（只使用 group_id 参数过滤，不使用 user_id）
         - **current_time** (可选): 当前时间，YYYY-MM-DD格式，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
         - **radius** (可选): COSINE 相似度阈值，范围 [-1, 1]，默认 0.6
           * 只返回相似度 >= radius 的结果
@@ -325,7 +320,6 @@ class AgenticV3Controller(BaseController):
             top_k = request_data.get("top_k", 20)
             retrieval_mode = request_data.get("retrieval_mode", "rrf")
             data_source = request_data.get("data_source", "episode")
-            memory_scope = request_data.get("memory_scope", "all")
             current_time_str = request_data.get("current_time")  # YYYY-MM-DD格式
             radius = request_data.get("radius")  # COSINE 相似度阈值（可选）
 
@@ -353,7 +347,7 @@ class AgenticV3Controller(BaseController):
 
             logger.info(
                 f"收到 lightweight 检索请求: query={query}, group_id={group_id}, "
-                f"mode={retrieval_mode}, source={data_source}, scope={memory_scope}, "
+                f"mode={retrieval_mode}, source={data_source}"
                 f"current_time={current_time_str}, top_k={top_k}"
             )
 
@@ -366,7 +360,6 @@ class AgenticV3Controller(BaseController):
                 top_k=top_k,
                 retrieval_mode=retrieval_mode,
                 data_source=data_source,
-                memory_scope=memory_scope,
                 current_time=current_time,
                 radius=radius,
             )
@@ -502,17 +495,9 @@ class AgenticV3Controller(BaseController):
             import os
 
             # 从请求或环境变量获取配置
-            api_key = (
-                llm_config.get("api_key")
-                or os.getenv("OPENROUTER_API_KEY")
-                or os.getenv("OPENAI_API_KEY")
-            )
-            base_url = llm_config.get("base_url") or os.getenv(
-                "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
-            )
-            model = llm_config.get("model") or os.getenv(
-                "LLM_MODEL", "qwen/qwen3-235b-a22b-2507"
-            )
+            api_key = llm_config.get("api_key") or os.getenv("LLM_API_KEY")
+            base_url = llm_config.get("base_url") or os.getenv("LLM_BASE_URL")
+            model = llm_config.get("model") or os.getenv("LLM_MODEL")
 
             if not api_key:
                 raise ValueError(

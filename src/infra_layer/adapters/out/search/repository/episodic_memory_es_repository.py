@@ -239,23 +239,14 @@ class EpisodicMemoryEsRepository(BaseRepository[EpisodicMemoryDoc]):
 
             # 构建过滤条件
             filter_queries = []
-            # 限定只返回 episode 文档（个人/群组），兼容旧文档缺少 type 的情况
-            valid_episode_types = ["episode", "personal_episode", "group_episode"]
-            filter_queries.append(
-                Q(
-                    "bool",
-                    should=[
-                        Q("terms", type=valid_episode_types),
-                        Q("bool", must_not=Q("exists", field="type")),
-                    ],
-                    minimum_should_match=1,
-                )
-            )
-            if user_id is not None:  # 使用 is not None 而不是 truthy 检查，支持空字符串
-                if user_id:  # 非空字符串：个人记忆
-                    filter_queries.append(Q("term", user_id=user_id))
-                else:  # 空字符串：群组记忆
-                    filter_queries.append(Q("term", user_id=""))
+            
+            if user_id and user_id != "":
+                filter_queries.append(Q("term", user_id=user_id))
+            elif user_id is None or user_id == "":
+                # 只保留 user_id 不存在的文档(群组记忆)
+                filter_queries.append(Q("bool", must_not=Q("exists", field="user_id")))
+            if group_id and group_id != "":
+                filter_queries.append(Q("term", group_id=group_id))
             if participant_user_id:
                 filter_queries.append(Q("term", participants=participant_user_id))
             if group_id:

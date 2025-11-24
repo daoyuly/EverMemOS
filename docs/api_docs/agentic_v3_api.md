@@ -141,7 +141,6 @@ Lightweight memory retrieval (Embedding + BM25 + RRF fusion)
   "top_k": 20,
   "retrieval_mode": "rrf",
   "data_source": "episode",
-  "memory_scope": "all",
   "current_time": "2025-01-15",
   "radius": 0.6
 }
@@ -158,7 +157,6 @@ Lightweight memory retrieval (Embedding + BM25 + RRF fusion)
 | top_k | integer | No | 20 | Number of results to return |
 | retrieval_mode | string | No | rrf | Retrieval mode: rrf/embedding/bm25 |
 | data_source | string | No | episode | Data source: episode/event_log/semantic_memory/profile |
-| memory_scope | string | No | all | Memory scope: all/personal/group |
 | current_time | string | No | - | Current time (YYYY-MM-DD format, for semantic memory validity filtering) |
 | radius | float | No | 0.6 | COSINE similarity threshold, range [-1, 1] |
 
@@ -732,13 +730,8 @@ asyncio.run(agentic_retrieve())
 - `semantic_memory`: Suitable for retrieving abstract long-term memories
 - `profile`: Suitable for getting user or group profile information
 
-### 4. How to use memory_scope parameter?
 
-- `all` (default): Uses both user_id and group_id for filtering, gets specific user's memories in specific group
-- `personal`: Uses only user_id for filtering, gets all user's personal memories (cross-group)
-- `group`: Uses only group_id for filtering, gets all members' memories in the group
-
-### 5. How to adjust radius parameter?
+### 4. How to adjust radius parameter?
 
 `radius` is the COSINE similarity threshold, range [-1, 1]:
 
@@ -752,7 +745,7 @@ asyncio.run(agentic_retrieve())
 - Regular search: Use 0.6 (default)
 - Broad search: Use 0.5
 
-### 6. How to configure LLM for Agentic retrieval?
+### 5. How to configure LLM for Agentic retrieval?
 
 Two ways to configure LLM:
 
@@ -777,7 +770,7 @@ export LLM_MODEL="qwen/qwen3-235b-a22b-2507"
 }
 ```
 
-### 7. How to handle message timestamps?
+### 6. How to handle message timestamps?
 
 `create_time` must use ISO 8601 format, supports timezone:
 
@@ -795,7 +788,7 @@ Or without timezone (defaults to UTC):
 }
 ```
 
-### 8. How to filter by time range during retrieval?
+### 7. How to filter by time range during retrieval?
 
 Use `time_range_days` parameter to specify memories from recent days:
 
@@ -806,7 +799,7 @@ Use `time_range_days` parameter to specify memories from recent days:
 }
 ```
 
-### 9. How to handle profile retrieval?
+### 8. How to handle profile retrieval?
 
 Profile retrieval (data_source=profile) doesn't require query parameter, only user_id and group_id:
 
@@ -818,7 +811,7 @@ Profile retrieval (data_source=profile) doesn't require query parameter, only us
 }
 ```
 
-### 10. Are there rate limits for API calls?
+### 9. Are there rate limits for API calls?
 
 Currently no hard limits, but recommended:
 - **Storage interface**: No more than 100 requests per second

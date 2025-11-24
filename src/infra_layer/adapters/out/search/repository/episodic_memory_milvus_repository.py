@@ -42,7 +42,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
 
     async def create_and_save_episodic_memory(
         self,
-        event_id: str,
+        id: str,
         user_id: str,
         timestamp: datetime,
         episode: str,
@@ -128,7 +128,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
 
             # 准备实体数据
             entity = {
-                "id": event_id,
+                "id": id,
                 "vector": vector,
                 "user_id": user_id or "",  # Milvus VARCHAR 不接受 None，转为空字符串
                 "group_id": group_id or "",
@@ -146,11 +146,11 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             await self.insert(entity)
 
             logger.debug(
-                "✅ 创建情景记忆文档成功: event_id=%s, user_id=%s", event_id, user_id
+                "✅ 创建情景记忆文档成功: id=%s, user_id=%s", id, user_id
             )
 
             return {
-                "event_id": event_id,
+                "id": id,
                 "user_id": user_id,
                 "timestamp": timestamp,
                 "episode": episode,
@@ -159,7 +159,7 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
             }
 
         except Exception as e:
-            logger.error("❌ 创建情景记忆文档失败: event_id=%s, error=%s", event_id, e)
+            logger.error("❌ 创建情景记忆文档失败: id=%s, error=%s", id, e)
             raise
 
     # ==================== 搜索功能 ====================
@@ -197,11 +197,15 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
         try:
             # 构建过滤表达式
             filter_expr = []
-            if user_id is not None:  # 使用 is not None 而不是 truthy 检查，支持空字符串
-                if user_id:  # 非空字符串：个人记忆
-                    filter_expr.append(f'user_id == "{user_id}"')
-                else:  # 空字符串：群组记忆
-                    filter_expr.append('user_id == ""')
+            
+            
+            if user_id:
+                filter_expr.append(f'user_id == "{user_id}"')
+            else:
+                filter_expr.append('user_id == ""')
+            if group_id:
+                filter_expr.append(f'group_id == "{group_id}"')
+
             if participant_user_id:
                 filter_expr.append(
                     f'array_contains(participants, "{participant_user_id}")'
@@ -231,7 +235,10 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
                     "ef": ef_value,
                 }
             }
-            if similarity_radius is not None:
+            # 不设置 radius 参数!
+            # Milvus 的 radius 是相似度下限,设置过低的值反而可能导致问题
+            # 只在明确指定且 > -1.0 时才设置
+            if similarity_radius is not None and similarity_radius > -1.0:
                 search_params["params"]["radius"] = similarity_radius
 
             results = await self.collection.search(
@@ -245,6 +252,12 @@ class EpisodicMemoryMilvusRepository(BaseMilvusRepository[EpisodicMemoryCollecti
 
             # 处理结果
             search_results = []
+            raw_hit_count = sum(len(hits) for hits in results)
+            logger.info(
+                f"Milvus 原始返回: {raw_hit_count} 条结果, "
+                f"limit={limit}, filter_str={filter_str}, "
+            )
+            
             for hits in results:
                 for hit in hits:
                     if hit.score >= score_threshold:

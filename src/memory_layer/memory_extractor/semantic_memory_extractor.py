@@ -17,6 +17,7 @@ from .base_memory_extractor import MemoryExtractor, MemoryExtractRequest
 from ..types import MemoryType, MemCell, Memory, SemanticMemoryItem
 from agentic_layer.vectorize_service import get_vectorize_service
 from core.observation.logger import get_logger
+import uuid
 
 logger = get_logger(__name__)
 
