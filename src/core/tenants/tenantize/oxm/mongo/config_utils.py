@@ -98,7 +98,7 @@ def load_mongo_config_from_env() -> Dict[str, Any]:
     uri = os.getenv("MONGODB_URI")
     if uri:
         logger.info("📋 从环境变量 MONGODB_URI 加载配置")
-        return {"uri": uri, "database": os.getenv("MONGODB_DATABASE", "memsys")}
+        return {"uri": uri, "database": get_default_database_name()}
 
     # 分别读取各个配置项
     host = os.getenv("MONGODB_HOST", "localhost")
