@@ -49,7 +49,7 @@ class Forward:
     # @free_fall_migration(document_models=[YourModel])
     # async def create_indexes(self, session):
     #     # Get collection
-    #     collection = YourModel.get_motor_collection()
+    #     collection = YourModel.get_pymongo_collection()
     #     
     #     # Create indexes
     #     indexes = [
@@ -69,7 +69,7 @@ class Backward:
     
     # @free_fall_migration(document_models=[YourModel])
     # async def drop_indexes(self, session):
-    #     collection = YourModel.get_motor_collection()
+    #     collection = YourModel.get_pymongo_collection()
     #     await collection.drop_index("idx_field_name")
     
     pass

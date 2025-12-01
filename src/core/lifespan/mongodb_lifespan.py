@@ -8,12 +8,12 @@ from typing import Any
 import os
 
 from core.observation.logger import get_logger
-from core.di.utils import get_bean
+from core.di.utils import get_bean, get_bean_by_type
 from core.di.decorators import component
 from core.lifespan.lifespan_interface import LifespanProvider
 from core.oxm.mongo.document_base import DocumentBase
 from core.di.utils import get_all_subclasses
-from component.mongodb_client_factory import MongoDBClientWrapper
+from component.mongodb_client_factory import MongoDBClientFactory, MongoDBClientWrapper
 from core.oxm.mongo.migration.manager import MigrationManager
 
 
@@ -51,7 +51,7 @@ class MongoDBLifespanProvider(LifespanProvider):
         try:
 
             # 获取 MongoDB 客户端工厂
-            self._mongodb_factory = get_bean("mongodb_client_factory")
+            self._mongodb_factory = get_bean_by_type(MongoDBClientFactory)
 
             # 获取默认客户端
             self._mongodb_client: MongoDBClientWrapper = (
