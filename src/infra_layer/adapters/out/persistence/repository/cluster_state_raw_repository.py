@@ -1,7 +1,8 @@
 """
 ClusterState 原生 CRUD 仓库
 
-基于 Beanie ODM 的聚类状态数据访问层，同时实现 ClusterStorage 接口。
+基于 Beanie ODM 的聚类状态数据访问层。
+提供 ClusterStorage 兼容的接口 (duck typing)。
 """
 
 from typing import Optional, Dict, Any
@@ -9,16 +10,21 @@ from core.observation.logger import get_logger
 from core.di.decorators import repository
 from core.oxm.mongo.base_repository import BaseRepository
 
-from memory_layer.cluster_manager.storage import ClusterStorage
 from infra_layer.adapters.out.persistence.document.memory.cluster_state import ClusterState
 
 logger = get_logger(__name__)
 
 
 @repository("cluster_state_raw_repository", primary=True)
-class ClusterStateRawRepository(BaseRepository[ClusterState], ClusterStorage):
+class ClusterStateRawRepository(BaseRepository[ClusterState]):
     """
-    ClusterState 原生 CRUD 仓库，同时实现 ClusterStorage 接口
+    ClusterState 原生 CRUD 仓库
+    
+    提供 ClusterStorage 兼容的接口:
+    - save_cluster_state(group_id, state) -> bool
+    - load_cluster_state(group_id) -> Optional[Dict]
+    - get_cluster_assignments(group_id) -> Dict[str, str]
+    - clear(group_id) -> bool
     """
     
     def __init__(self):

@@ -46,12 +46,17 @@ from api_specs.memory_types import RawDataType
 from memory_layer.cluster_manager import (
     ClusterManager,
     ClusterManagerConfig,
-    InMemoryClusterStorage,
+    ClusterState,
 )
 from memory_layer.profile_manager import (
     ProfileManager,
     ProfileManagerConfig,
     ScenarioType,
+)
+
+# In-memory storage implementations for evaluation
+from evaluation.src.adapters.evermemos.tools import (
+    InMemoryClusterStorage,
     InMemoryProfileStorage,
 )
 
@@ -193,9 +198,7 @@ async def _extract_all_memories_for_memcell(
         # 2. 提取 Semantic（可选）
         if semantic_extractor:
             semantic_memories = await semantic_extractor.generate_semantic_memories_for_episode(
-                episode_text=episode_memory.episode,
-                timestamp=memcell.timestamp,
-                source_episode_id=memcell.event_id,
+                episode_memory  # 传递 Memory 对象
             )
             if semantic_memories:
                 memcell.semantic_memories = semantic_memories
@@ -346,211 +349,225 @@ async def process_single_conversation(
     Returns:
         tuple: (conv_id, memcell_list)
     """
-    # ❌ 删除最外层 try，让错误直接崩溃
     # Update status to processing
     if progress and task_id is not None:
         progress.update(task_id, status="Processing")
 
-        # Create components based on configuration
-        cluster_mgr = None
-        profile_mgr = None
+    # Create components based on configuration
+    cluster_mgr = None
+    cluster_state = None
+    cluster_storage = None
+    profile_mgr = None
+    profile_storage = None
 
-        # Create MemCellExtractor
-        raw_data_list = convert_conversation_to_raw_data_list(conversation)
-        memcell_extractor = ConvMemCellExtractor(
-            llm_provider=llm_provider, use_eval_prompts=True
+    # Create MemCellExtractor
+    raw_data_list = convert_conversation_to_raw_data_list(conversation)
+    memcell_extractor = ConvMemCellExtractor(
+        llm_provider=llm_provider, use_eval_prompts=True
+    )
+
+    # Conditional creation: Cluster manager (per-conversation)
+    if config and config.enable_clustering:
+        cluster_storage = InMemoryClusterStorage(
+            enable_persistence=True,
+            persist_dir=Path(save_dir) / "clusters" / f"conv_{conv_id}",
+        )
+        cluster_config = ClusterManagerConfig(
+            similarity_threshold=config.cluster_similarity_threshold,
+            max_time_gap_days=config.cluster_max_time_gap_days,
+        )
+        cluster_mgr = ClusterManager(config=cluster_config)
+        cluster_state = ClusterState()
+
+    # Conditional creation: Profile manager
+    if config and config.enable_profile_extraction:
+        profile_storage = InMemoryProfileStorage(
+            enable_persistence=True,
+            persist_dir=Path(save_dir) / "profiles" / f"conv_{conv_id}",
+            enable_versioning=True,
         )
 
-        # Conditional creation: Cluster manager (per-conversation)
-        if config and config.enable_clustering:
-            cluster_storage = InMemoryClusterStorage(
-                enable_persistence=True,
-                persist_dir=Path(save_dir) / "clusters" / f"conv_{conv_id}",
-            )
-            cluster_config = ClusterManagerConfig(
-                similarity_threshold=config.cluster_similarity_threshold,
-                max_time_gap_days=config.cluster_max_time_gap_days,
-                enable_persistence=True,
-                persist_dir=str(Path(save_dir) / "clusters" / f"conv_{conv_id}"),
-                clustering_algorithm="centroid",
-            )
-            cluster_mgr = ClusterManager(config=cluster_config, storage=cluster_storage)
-            cluster_mgr.attach_to_extractor(memcell_extractor)
+        # Set scenario type dynamically
+        scenario = (
+            ScenarioType.ASSISTANT
+            if config.profile_scenario.lower() == "assistant"
+            else ScenarioType.GROUP_CHAT
+        )
 
-        # Conditional creation: Profile manager
-        if config and config.enable_profile_extraction and cluster_mgr:
-            profile_storage = InMemoryProfileStorage(
-                enable_persistence=True,
-                persist_dir=Path(save_dir) / "profiles" / f"conv_{conv_id}",
-                enable_versioning=True,
-            )
+        profile_config = ProfileManagerConfig(
+            scenario=scenario,
+            min_confidence=config.profile_min_confidence,
+            batch_size=50,
+        )
 
-            # Set scenario type dynamically
-            scenario = (
-                ScenarioType.ASSISTANT
-                if config.profile_scenario.lower() == "assistant"
-                else ScenarioType.GROUP_CHAT
-            )
-
-            profile_config = ProfileManagerConfig(
-                scenario=scenario,
-                min_confidence=config.profile_min_confidence,
-                enable_versioning=True,
-                auto_extract=True,
-                batch_size=50,
-            )
-
-            profile_mgr = ProfileManager(
-                llm_provider=llm_provider,
-                config=profile_config,
-                storage=profile_storage,
-                group_id=f"locomo_conv_{conv_id}",
-                group_name=f"LoComo Conversation {conv_id}",
-            )
-
-            # Set minimum MemCells threshold
-            profile_mgr._min_memcells_threshold = config.profile_min_memcells
-
-            # Connect components
-            profile_mgr.attach_to_cluster_manager(cluster_mgr)
-
-        # Extract MemCells（传递语义记忆提取配置）
-        memcell_list = await memcell_extraction_from_conversation(
-            raw_data_list,
+        profile_mgr = ProfileManager(
             llm_provider=llm_provider,
-            memcell_extractor=memcell_extractor,
-            conv_id=conv_id,
-            progress=progress,
-            task_id=task_id,
-            enable_semantic_extraction=config.enable_semantic_extraction if config else False,
+            config=profile_config,
+            group_id=f"locomo_conv_{conv_id}",
+            group_name=f"LoComo Conversation {conv_id}",
         )
-        # print(f"   ✅ Conv {conv_id}: {len(memcell_list)} memcells extracted")  # Commented to avoid interrupting progress bar
 
-        # Convert timestamps to datetime objects before saving
+    # Extract MemCells
+    memcell_list = await memcell_extraction_from_conversation(
+        raw_data_list,
+        llm_provider=llm_provider,
+        memcell_extractor=memcell_extractor,
+        conv_id=conv_id,
+        progress=progress,
+        task_id=task_id,
+        enable_semantic_extraction=config.enable_semantic_extraction if config else False,
+    )
+
+    # Convert timestamps to datetime objects before saving
+    for memcell in memcell_list:
+        if hasattr(memcell, 'timestamp'):
+            ts = memcell.timestamp
+            if isinstance(ts, (int, float)):
+                memcell.timestamp = from_timestamp(ts)
+            elif isinstance(ts, str):
+                memcell.timestamp = from_iso_format(ts)
+            elif not isinstance(ts, datetime):
+                memcell.timestamp = get_now_with_timezone()
+
+    # Concurrent event log generation
+    if event_log_extractor:
+        memcells_with_episode = [
+            (idx, memcell)
+            for idx, memcell in enumerate(memcell_list)
+            if hasattr(memcell, 'episode') 
+            and memcell.episode 
+            and memcell.episode != "Episode extraction failed"
+        ]
+
+        async def extract_single_event_log(idx: int, memcell):
+            event_log = await event_log_extractor.extract_event_log(
+                episode_text=memcell.episode, timestamp=memcell.timestamp
+            )
+            return idx, event_log
+
+        sem = asyncio.Semaphore(20)
+
+        async def extract_with_semaphore(idx, memcell):
+            async with sem:
+                return await extract_single_event_log(idx, memcell)
+
+        print(f"\n🔥 Starting concurrent extraction of {len(memcells_with_episode)} event logs...")
+        event_log_tasks = [
+            extract_with_semaphore(idx, memcell)
+            for idx, memcell in memcells_with_episode
+        ]
+        event_log_results = await asyncio.gather(*event_log_tasks)
+
+        for original_idx, event_log in event_log_results:
+            if event_log:
+                memcell_list[original_idx].event_log = event_log
+
+        print(f"✅ Event log extraction complete: {sum(1 for _, el in event_log_results if el)}/{len(event_log_results)} succeeded")
+
+    # Save single conversation results
+    memcell_dicts = []
+    for memcell in memcell_list:
+        memcell_dict = memcell.to_dict()
+        if hasattr(memcell, 'event_log') and memcell.event_log:
+            memcell_dict['event_log'] = memcell.event_log.to_dict()
+        memcell_dicts.append(memcell_dict)
+
+    output_file = os.path.join(save_dir, f"memcell_list_conv_{conv_id}.json")
+    with open(output_file, "w") as f:
+        json.dump(memcell_dicts, f, ensure_ascii=False, indent=2)
+
+    # Clustering: process each memcell
+    cluster_stats = {}
+    if cluster_mgr and cluster_state:
+        group_id = f"conv_{conv_id}"
         for memcell in memcell_list:
-            if hasattr(memcell, 'timestamp'):
-                ts = memcell.timestamp
-                if isinstance(ts, (int, float)):
-                    # Convert int/float timestamp to datetime with timezone
-                    memcell.timestamp = from_timestamp(ts)
-                elif isinstance(ts, str):
-                    # Convert string timestamp to datetime with timezone
-                    memcell.timestamp = from_iso_format(ts)
-                elif not isinstance(ts, datetime):
-                    # If unexpected type, use current time
-                    memcell.timestamp = get_now_with_timezone()
+            memcell_dict = memcell.to_dict() if hasattr(memcell, 'to_dict') else memcell
+            cluster_id, cluster_state = await cluster_mgr.cluster_memcell(
+                memcell_dict, cluster_state
+            )
+        
+        # Save cluster state
+        await cluster_storage.save_cluster_state(group_id, cluster_state.to_dict())
+        
+        # Export clustering results
+        cluster_output_dir = Path(save_dir) / "clusters" / f"conv_{conv_id}"
+        cluster_output_dir.mkdir(parents=True, exist_ok=True)
+        
+        state_file = cluster_output_dir / f"cluster_state_{group_id}.json"
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(cluster_state.to_dict(), f, ensure_ascii=False, indent=2, default=str)
+        
+        assignments_file = cluster_output_dir / f"cluster_map_{group_id}.json"
+        with open(assignments_file, "w", encoding="utf-8") as f:
+            json.dump({"assignments": cluster_state.eventid_to_cluster}, f, ensure_ascii=False, indent=2)
+        
+        cluster_stats = cluster_mgr.get_stats()
 
-        # Optimization: concurrent event log generation (10-20x faster)
-        if event_log_extractor:
-            # Prepare all memcells needing event log extraction
-            # 过滤掉 episode 提取失败的 MemCell
-            memcells_with_episode = [
-                (idx, memcell)
-                for idx, memcell in enumerate(memcell_list)
-                if hasattr(memcell, 'episode') 
-                and memcell.episode 
-                and memcell.episode != "Episode extraction failed"
-            ]
-
-            # Define single event log extraction task
-            async def extract_single_event_log(idx: int, memcell):
-                # ❌ 删除 try-except，让错误直接暴露
-                event_log = await event_log_extractor.extract_event_log(
-                    episode_text=memcell.episode, timestamp=memcell.timestamp
+    # Profile extraction: after all memcells processed
+    profile_stats = {}
+    profile_count = 0
+    if profile_mgr and profile_storage and memcell_list:
+        user_id_set = set()
+        for memcell in memcell_list:
+            if hasattr(memcell, 'user_id_list'):
+                user_id_set.update(memcell.user_id_list or [])
+        user_id_list = list(user_id_set)
+        
+        old_profiles_dict = await profile_storage.get_all_profiles()
+        old_profiles = list(old_profiles_dict.values())
+        
+        new_profiles = await profile_mgr.extract_profiles(
+            memcells=memcell_list,  # 传递 MemCell 对象，而不是字典
+            old_profiles=old_profiles,
+            user_id_list=user_id_list,
+        )
+        
+        group_id = f"locomo_conv_{conv_id}"
+        for profile in new_profiles:
+            if isinstance(profile, dict):
+                user_id = profile.get('user_id')
+            else:
+                user_id = getattr(profile, 'user_id', None)
+            
+            if user_id:
+                await profile_storage.save_profile(
+                    user_id, 
+                    profile,
+                    metadata={
+                        "group_id": group_id,
+                        "scenario": config.profile_scenario if config else "assistant",
+                        "memcell_count": len(memcell_list),
+                    }
                 )
-                return idx, event_log
+                profile_count += 1
+        
+        profile_stats = profile_mgr.get_stats()
 
-            # Concurrent extraction of all event logs (using Semaphore to control concurrency)
-            sem = asyncio.Semaphore(
-                20
-            )  # Limit concurrency to 20 (avoid API rate limits)
+    # Save statistics
+    stats_output = {
+        "conv_id": conv_id,
+        "memcells": len(memcell_list),
+        "clustering_enabled": config.enable_clustering if config else False,
+        "profile_enabled": config.enable_profile_extraction if config else False,
+        "semantic_enabled": config.enable_semantic_extraction if config else False,
+    }
 
-            async def extract_with_semaphore(idx, memcell):
-                async with sem:
-                    return await extract_single_event_log(idx, memcell)
+    if cluster_stats:
+        stats_output["clustering"] = cluster_stats
+    if profile_stats:
+        stats_output["profiles"] = profile_stats
+        stats_output["profile_count"] = profile_count
 
-            print(
-                f"\n🔥 Starting concurrent extraction of {len(memcells_with_episode)} event logs..."
-            )
-            event_log_tasks = [
-                extract_with_semaphore(idx, memcell)
-                for idx, memcell in memcells_with_episode
-            ]
-            event_log_results = await asyncio.gather(*event_log_tasks)
+    stats_file = Path(save_dir) / "stats" / f"conv_{conv_id}_stats.json"
+    stats_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(stats_file, "w") as f:
+        json.dump(stats_output, f, ensure_ascii=False, indent=2)
 
-            # Link event logs back to corresponding memcells
-            for original_idx, event_log in event_log_results:
-                if event_log:
-                    memcell_list[original_idx].event_log = event_log
+    # Update progress
+    if progress_counter:
+        progress_counter['completed'] += 1
 
-            print(
-                f"✅ Event log extraction complete: {sum(1 for _, el in event_log_results if el)}/{len(event_log_results)} succeeded"
-            )
-
-        # Save single conversation results
-        memcell_dicts = []
-        for memcell in memcell_list:
-            memcell_dict = memcell.to_dict()
-            # If has event_log, add to dict
-            if hasattr(memcell, 'event_log') and memcell.event_log:
-                memcell_dict['event_log'] = memcell.event_log.to_dict()
-            memcell_dicts.append(memcell_dict)
-
-        memcell_dicts = [memcell_dict for memcell_dict in memcell_dicts]
-        # print(memcell_dicts)  # Commented to avoid large output
-        output_file = os.path.join(save_dir, f"memcell_list_conv_{conv_id}.json")
-        with open(output_file, "w") as f:
-            json.dump(memcell_dicts, f, ensure_ascii=False, indent=2)
-
-        # Conditional export: clustering and Profile results
-        cluster_stats = {}
-        profile_stats = {}
-        profile_count = 0
-
-        if cluster_mgr or profile_mgr:
-            await asyncio.sleep(2)  # Give async tasks time to complete
-
-        # Export clustering results (if enabled)
-        if cluster_mgr:
-            cluster_output_dir = Path(save_dir) / "clusters" / f"conv_{conv_id}"
-            cluster_output_dir.mkdir(parents=True, exist_ok=True)
-            await cluster_mgr.export_clusters(cluster_output_dir)
-            cluster_stats = cluster_mgr.get_stats()
-
-        # Export Profiles (if enabled)
-        if profile_mgr:
-            profile_output_dir = Path(save_dir) / "profiles" / f"conv_{conv_id}"
-            profile_count = await profile_mgr.export_profiles(
-                profile_output_dir, include_history=True
-            )
-            profile_stats = profile_mgr.get_stats()
-
-        # Save statistics
-        stats_output = {
-            "conv_id": conv_id,
-            "memcells": len(memcell_list),
-            "clustering_enabled": config.enable_clustering if config else False,
-            "profile_enabled": config.enable_profile_extraction if config else False,
-            "semantic_enabled": config.enable_semantic_extraction if config else False,
-        }
-
-        if cluster_stats:
-            stats_output["clustering"] = cluster_stats
-        if profile_stats:
-            stats_output["profiles"] = profile_stats
-            stats_output["profile_count"] = profile_count
-
-        stats_file = Path(save_dir) / "stats" / f"conv_{conv_id}_stats.json"
-        stats_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(stats_file, "w") as f:
-            json.dump(stats_output, f, ensure_ascii=False, indent=2)
-
-        # Update progress (silent, avoid interrupting progress bar)
-        if progress_counter:
-            progress_counter['completed'] += 1
-            # No printing to avoid interrupting progress bar
-
-        return conv_id, memcell_list
+    return conv_id, memcell_list
 
 
 async def main():

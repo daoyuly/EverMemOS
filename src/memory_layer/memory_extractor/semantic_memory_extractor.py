@@ -203,7 +203,7 @@ class SemanticMemoryExtractor(MemoryExtractor):
 
     @staticmethod
     def _clean_date_string(date_str: Optional[str]) -> Optional[str]:
-        """清理日期字符串，移除非法字符
+        """清理日期字符串，移除非法字符并验证日期有效性
 
         Args:
             date_str: 原始日期字符串
@@ -220,11 +220,21 @@ class SemanticMemoryExtractor(MemoryExtractor):
         cleaned = re.sub(r'[^\d\-]', '', date_str)
 
         # 验证格式是否为 YYYY-MM-DD
-        if re.match(r'^\d{4}-\d{2}-\d{2}$', cleaned):
-            return cleaned
-        else:
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', cleaned):
             logger.warning(
-                f"时间格式无效，已清理但仍不符合 YYYY-MM-DD: 原始='{date_str}', 清理后='{cleaned}'"
+                f"时间格式无效，不符合 YYYY-MM-DD: 原始='{date_str}', 清理后='{cleaned}'"
+            )
+            return None
+        
+        # 验证日期值是否合法（月份 1-12，日期 1-31 等）
+        try:
+            year, month, day = map(int, cleaned.split('-'))
+            # 使用 datetime 验证日期合法性
+            datetime(year, month, day)
+            return cleaned
+        except ValueError as e:
+            logger.warning(
+                f"日期值无效: '{cleaned}', 错误: {e}"
             )
             return None
 

@@ -1,7 +1,8 @@
 """
 UserProfile 原生 CRUD 仓库
 
-基于 Beanie ODM 的用户画像数据访问层，同时实现 ProfileStorage 接口。
+基于 Beanie ODM 的用户画像数据访问层。
+提供 ProfileStorage 兼容的接口 (duck typing)。
 """
 
 from typing import Optional, Dict, Any, List
@@ -9,16 +10,22 @@ from core.observation.logger import get_logger
 from core.di.decorators import repository
 from core.oxm.mongo.base_repository import BaseRepository
 
-from memory_layer.profile_manager.storage import ProfileStorage
 from infra_layer.adapters.out.persistence.document.memory.user_profile import UserProfile
 
 logger = get_logger(__name__)
 
 
 @repository("user_profile_raw_repository", primary=True)
-class UserProfileRawRepository(BaseRepository[UserProfile], ProfileStorage):
+class UserProfileRawRepository(BaseRepository[UserProfile]):
     """
-    UserProfile 原生 CRUD 仓库，同时实现 ProfileStorage 接口
+    UserProfile 原生 CRUD 仓库
+    
+    提供 ProfileStorage 兼容的接口:
+    - save_profile(user_id, profile, metadata) -> bool
+    - get_profile(user_id) -> Optional[Any]
+    - get_all_profiles() -> Dict[str, Any]
+    - get_profile_history(user_id, limit) -> List[Dict]
+    - clear() -> bool
     """
     
     def __init__(self):

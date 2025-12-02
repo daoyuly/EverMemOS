@@ -153,8 +153,14 @@ def _clone_event_log(raw_event_log: Any) -> Optional[EventLog]:
     return None
 
 
+from biz_layer.memorize_config import MemorizeConfig, DEFAULT_MEMORIZE_CONFIG
+
+
 async def _trigger_clustering(
-    group_id: str, memcell: MemCell, scene: Optional[str] = None
+    group_id: str,
+    memcell: MemCell,
+    scene: Optional[str] = None,
+    config: MemorizeConfig = DEFAULT_MEMORIZE_CONFIG,
 ) -> None:
     """异步触发 MemCell 聚类（后台任务，不阻塞主流程）
 
@@ -173,6 +179,7 @@ async def _trigger_clustering(
         from memory_layer.cluster_manager import (
             ClusterManager,
             ClusterManagerConfig,
+            ClusterState,
         )
         from memory_layer.profile_manager import (
             ProfileManager,
@@ -190,64 +197,21 @@ async def _trigger_clustering(
 
         logger.info(f"[聚类] 正在获取 ClusterStateRawRepository...")
         # 获取 MongoDB 存储
-        mongo_storage = get_bean_by_type(ClusterStateRawRepository)
-        logger.info(f"[聚类] ClusterStateRawRepository 获取成功: {type(mongo_storage)}")
+        cluster_storage = get_bean_by_type(ClusterStateRawRepository)
+        logger.info(f"[聚类] ClusterStateRawRepository 获取成功: {type(cluster_storage)}")
 
-        # 创建 ClusterManager（使用 MongoDB 存储）
-        config = ClusterManagerConfig(
-            similarity_threshold=0.65,
-            max_time_gap_days=7,
-            enable_persistence=False,  # MongoDB 不需要文件持久化
+        # 创建 ClusterManager（纯计算组件）
+        cluster_config = ClusterManagerConfig(
+            similarity_threshold=config.cluster_similarity_threshold,
+            max_time_gap_days=config.cluster_max_time_gap_days,
         )
-        cluster_manager = ClusterManager(config=config, storage=mongo_storage)
+        cluster_manager = ClusterManager(config=cluster_config)
         logger.info(f"[聚类] ClusterManager 创建成功")
 
-        # 创建 ProfileManager 并连接到 ClusterManager
-        # 获取 MongoDB Profile 存储
-        profile_storage = get_bean_by_type(UserProfileRawRepository)
-        logger.info(f"[聚类] UserProfileRawRepository 获取成功: {type(profile_storage)}")
-
-        llm_provider = LLMProvider(
-            provider_type=os.getenv("LLM_PROVIDER", "openai"),
-            model=os.getenv("LLM_MODEL", "gpt-4"),
-            base_url=os.getenv("LLM_BASE_URL"),
-            api_key=os.getenv("LLM_API_KEY"),
-            temperature=float(os.getenv("LLM_TEMPERATURE", "0.3")),
-            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "16384")),
-        )
-
-        # 根据 scene 决定 Profile 提取场景
-        # assistant/companion -> assistant 场景（提取兴趣、偏好、生活习惯）
-        # 其他 -> group_chat 场景（提取工作角色、技能、项目经验）
-        profile_scenario = (
-            "assistant"
-            if scene and scene.lower() in ["assistant", "companion"]
-            else "group_chat"
-        )
-
-        profile_config = ProfileManagerConfig(
-            scenario=profile_scenario,
-            min_confidence=0.6,
-            enable_versioning=True,
-            auto_extract=True,
-        )
-
-        profile_manager = ProfileManager(
-            llm_provider=llm_provider,
-            config=profile_config,
-            storage=profile_storage,  # 使用 MongoDB 存储
-            group_id=group_id,
-            group_name=None,  # 可以从 memcell 中获取
-        )
-
-        # 连接 ProfileManager 到 ClusterManager
-        profile_manager.attach_to_cluster_manager(cluster_manager)
-        logger.info(
-            f"[聚类] ProfileManager 已连接到 ClusterManager (场景: {profile_scenario}, 使用 MongoDB 存储)"
-        )
-        print(
-            f"[聚类] ProfileManager 已连接，阈值: {profile_manager._min_memcells_threshold}"
-        )
+        # 加载聚类状态
+        state_dict = await cluster_storage.load_cluster_state(group_id)
+        cluster_state = ClusterState.from_dict(state_dict) if state_dict else ClusterState()
+        logger.info(f"[聚类] 加载聚类状态: {len(cluster_state.event_ids)} 个已聚类事件")
 
         # 将 MemCell 转换为聚类所需的字典格式
         memcell_dict = {
@@ -261,10 +225,14 @@ async def _trigger_clustering(
         logger.info(f"[聚类] 开始执行聚类: {memcell_dict['event_id']}")
         print(f"[聚类] 开始执行聚类: event_id={memcell_dict['event_id']}")
 
-        # 执行聚类（会自动触发 ProfileManager 的回调）
-        cluster_id = await cluster_manager.cluster_memcell(
-            group_id=group_id, memcell=memcell_dict
+        # 执行聚类（纯计算）
+        cluster_id, cluster_state = await cluster_manager.cluster_memcell(
+            memcell_dict, cluster_state
         )
+
+        # 保存聚类状态
+        await cluster_storage.save_cluster_state(group_id, cluster_state.to_dict())
+        logger.info(f"[聚类] 聚类状态已保存")
 
         print(f"[聚类] 聚类完成: cluster_id={cluster_id}")
 
@@ -279,6 +247,17 @@ async def _trigger_clustering(
             )
             print(f"[聚类] ⚠️ 聚类返回 None")
 
+        # Profile 提取
+        if cluster_id:
+            await _trigger_profile_extraction(
+                group_id=group_id,
+                cluster_id=cluster_id,
+                cluster_state=cluster_state,
+                memcell=memcell,
+                scene=scene,
+                config=config,
+            )
+
     except Exception as e:
         # 聚类失败，打印详细错误信息并重新抛出
         import traceback
@@ -288,6 +267,126 @@ async def _trigger_clustering(
         print(error_msg)  # 确保在控制台能看到
         print(traceback.format_exc())
         raise  # 重新抛出异常，让调用者知道失败了
+
+
+async def _trigger_profile_extraction(
+    group_id: str,
+    cluster_id: str,
+    cluster_state,  # ClusterState
+    memcell: MemCell,
+    scene: Optional[str] = None,
+    config: MemorizeConfig = DEFAULT_MEMORIZE_CONFIG,
+) -> None:
+    """触发 Profile 提取
+    
+    Args:
+        group_id: 群组ID
+        cluster_id: 当前 memcell 被分配到的 cluster
+        cluster_state: 当前聚类状态
+        memcell: 当前处理的 MemCell
+        scene: 对话场景
+        config: 记忆提取配置
+    """
+    try:
+        from memory_layer.profile_manager import ProfileManager, ProfileManagerConfig
+        from infra_layer.adapters.out.persistence.repository.user_profile_raw_repository import (
+            UserProfileRawRepository,
+        )
+        from memory_layer.llm.llm_provider import LLMProvider
+        from core.di import get_bean_by_type
+        import os
+
+        # 获取当前 cluster 中的 memcell 数量
+        cluster_memcell_count = cluster_state.cluster_counts.get(cluster_id)
+        if cluster_memcell_count < config.profile_min_memcells:
+            logger.debug(
+                f"[Profile] Cluster {cluster_id} 只有 {cluster_memcell_count} 个 memcells "
+                f"(需要 {config.profile_min_memcells})，跳过提取"
+            )
+            return
+
+        logger.info(f"[Profile] 开始提取 Profile: cluster={cluster_id}, memcells={cluster_memcell_count}")
+
+        # 获取 Profile 存储
+        profile_storage = get_bean_by_type(UserProfileRawRepository)
+
+        # 创建 LLM Provider
+        llm_provider = LLMProvider(
+            provider_type=os.getenv("LLM_PROVIDER", "openai"),
+            model=os.getenv("LLM_MODEL", "gpt-4"),
+            base_url=os.getenv("LLM_BASE_URL"),
+            api_key=os.getenv("LLM_API_KEY"),
+            temperature=float(os.getenv("LLM_TEMPERATURE", "0.3")),
+            max_tokens=int(os.getenv("LLM_MAX_TOKENS", "16384")),
+        )
+
+        # 确定场景
+        profile_scenario = (
+            "assistant"
+            if scene and scene.lower() in ["assistant", "companion"]
+            else "group_chat"
+        )
+
+        # 创建 ProfileManager（纯计算组件）
+        profile_config = ProfileManagerConfig(
+            scenario=profile_scenario,
+            min_confidence=config.profile_min_confidence,
+            enable_versioning=config.profile_enable_versioning,
+            auto_extract=True,
+        )
+        profile_manager = ProfileManager(
+            llm_provider=llm_provider,
+            config=profile_config,
+            group_id=group_id,
+            group_name=None,
+        )
+
+        # 获取参与者列表（排除机器人）
+        user_id_list = [u for u in (memcell.participants or []) 
+                        if "robot" not in u.lower() and "assistant" not in u.lower()]
+
+        # 加载已有的 profiles
+        old_profiles_dict = await profile_storage.get_all_profiles()
+        old_profiles = list(old_profiles_dict.values()) if old_profiles_dict else []
+
+        # 执行 Profile 提取（直接传递 MemCell 对象，而不是字典）
+        new_profiles = await profile_manager.extract_profiles(
+            memcells=[memcell],  # 传递 MemCell 对象
+            old_profiles=old_profiles,
+            user_id_list=user_id_list,
+        )
+
+        # 保存新提取的 profiles
+        for profile in new_profiles:
+            if isinstance(profile, dict):
+                user_id = profile.get('user_id')
+            else:
+                user_id = getattr(profile, 'user_id', None)
+            
+            if user_id:
+                await profile_storage.save_profile(
+                    user_id, 
+                    profile, 
+                    metadata={
+                        "group_id": group_id,
+                        "scenario": profile_scenario,
+                        "cluster_id": cluster_id,
+                        "memcell_count": cluster_memcell_count,
+                        "confidence": config.profile_min_confidence,
+                    }
+                )
+                logger.info(f"[Profile] ✅ 保存 Profile: user_id={user_id}, group_id={group_id}, cluster={cluster_id}")
+            else:
+                logger.warning(f"[Profile] ⚠️ Profile 没有 user_id，跳过保存: {type(profile)}")
+
+        logger.info(f"[Profile] ✅ Profile 提取完成: 提取 {len(new_profiles)} 个 profiles")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"[Profile] ❌ Profile 提取失败: {e}", exc_info=True)
+        print(f"[Profile] ❌ Profile 提取失败: {e}")
+        print(traceback.format_exc())
+        # Profile 提取失败不应阻塞主流程
 
 
 def _convert_data_type_to_raw_data_type(data_type) -> RawDataType:
