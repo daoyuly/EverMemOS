@@ -1,7 +1,7 @@
 """
-SemanticMemory Beanie ODM 模型
+Foresight Beanie ODM 模型
 
-基于 Beanie ODM 的语义记忆数据模型定义，存储用户对特定主题的语义理解和描述。
+基于 Beanie ODM 的前瞻数据模型定义，存储用户对特定主题的前瞻理解和描述。
 """
 
 from datetime import datetime
@@ -13,11 +13,11 @@ from pymongo import IndexModel, ASCENDING, DESCENDING, TEXT
 from core.oxm.mongo.audit_base import AuditBase
 
 
-class SemanticMemory(DocumentBase, AuditBase):
+class Foresight(DocumentBase, AuditBase):
     """
-    语义记忆文档模型
+    前瞻文档模型
 
-    存储用户对特定主题的语义理解和描述，支持知识图谱构建。
+    存储用户对特定主题的前瞻理解和描述，支持知识图谱构建。
     """
 
     # 核心字段（必填）
@@ -31,7 +31,7 @@ class SemanticMemory(DocumentBase, AuditBase):
     )
 
     model_config = ConfigDict(
-        collection="semantic_memories",
+        collection="foresights",
         validate_assignment=True,
         json_encoders={datetime: lambda dt: dt.isoformat()},
         json_schema_extra={
@@ -47,7 +47,7 @@ class SemanticMemory(DocumentBase, AuditBase):
     class Settings:
         """Beanie 设置"""
 
-        name = "semantic_memories"
+        name = "foresights"
 
         indexes = [
             # 1. 用户ID唯一索引（主键）
@@ -64,4 +64,4 @@ class SemanticMemory(DocumentBase, AuditBase):
 
 
 # 导出模型
-__all__ = ["SemanticMemory"]
+__all__ = ["Foresight"]

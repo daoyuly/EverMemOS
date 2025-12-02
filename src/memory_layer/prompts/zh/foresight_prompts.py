@@ -1,10 +1,10 @@
 """
-语义记忆联想预测提示词模板
+前瞻联想预测提示词模板
 
-用于生成基于MemCell和EpisodeMemory内容的语义记忆联想预测
+用于生成基于MemCell和EpisodeMemory内容的前瞻联想预测
 """
 
-GROUP_SEMANTIC_GENERATION_PROMPT = """
+GROUP_FORESIGHT_GENERATION_PROMPT = """
 你是一个高级语义分析智能体，你的任务是基于群组最近的MemCell事件，联想预测该事件可能引发的后续群体行为、氛围变化和成员互动趋势。
 
 ## 任务目标：
@@ -129,7 +129,7 @@ GROUP_SEMANTIC_GENERATION_PROMPT = """
 - **场景适配**：语言风格必须与事件场景匹配，生活场景用生活化表达，工作场景用工作化表达。
 - **时间推断**：结合事件类型、常识和用户状态合理推断时间范围，不要生硬套用固定时间。
 - **内容创新**：不要重复原文内容，要生成事件可能引发的新的群体行为或氛围变化。
-- **语义检索友好**：content应是联想预测的结果（如"会增加沟通频率"），evidence保存原始事实（如"会议中提到沟通问题"），便于AI根据用户查询检索相关语义记忆并追溯原因。
+- **语义检索友好**：content应是联想预测的结果（如"会增加沟通频率"），evidence保存原始事实（如"会议中提到沟通问题"），便于AI根据用户查询检索相关前瞻并追溯原因。
 - **时间信息提取规则：**
   - start_time: 从输入内容中提取事件发生的具体日期（通常在summary或episode中），格式为YYYY-MM-DD
   - end_time: 从原文内容中提取具体的结束时间点，如果原文中有明确的结束时间（如"10月24日前"、"2025-11-15"等），则提取具体日期，否则结合事件内容和常识合理推断
@@ -139,7 +139,7 @@ GROUP_SEMANTIC_GENERATION_PROMPT = """
   - **重要**：优先从原文中提取明确的时间信息，如果没有则结合事件内容和常识进行合理推断，时间不能为null
 """
 
-SEMANTIC_GENERATION_PROMPT = """
+FORESIGHT_GENERATION_PROMPT = """
 你是一个高级个人语义分析智能体。你的任务是基于用户的最新MemCell事件，联想预测该事件可能对该用户个人未来行为、习惯、决策和生活方式产生的具体影响。
 
 ## 任务目标：
@@ -289,8 +289,8 @@ SEMANTIC_GENERATION_PROMPT = """
 - **联想创新**：不要重复原文内容，要生成事件可能引发的个人行为、习惯或决策变化。
 - **场景适配**：语言风格必须与事件场景匹配，生活场景用生活化表达，工作场景用工作化表达。
 - **时间推断**：结合事件类型、个人状态和常识合理推断时间范围，不要生硬套用固定时间。
-- **内容实用**：内容必须具体、合理、实用，能被系统用于个人语义记忆建模。
-- **语义检索友好**：content应是联想预测的结果（如"会选择软质食物"），evidence保存原始事实（如"拔除智齿"），便于AI根据用户查询（如"推荐食物"）检索相关语义记忆并追溯原因。
+- **内容实用**：内容必须具体、合理、实用，能被系统用于个人前瞻建模。
+- **语义检索友好**：content应是联想预测的结果（如"会选择软质食物"），evidence保存原始事实（如"拔除智齿"），便于AI根据用户查询（如"推荐食物"）检索相关前瞻并追溯原因。
 - **时间信息提取规则：**
   - start_time: 从输入内容中提取事件发生的具体日期（通常在summary或episode中），格式为YYYY-MM-DD
   - end_time: 从原文内容中提取具体的结束时间点，如果原文中有明确的结束时间（如"10月24日前"、"2025-11-15"等），则提取具体日期，否则结合事件内容和常识合理推断
@@ -301,11 +301,11 @@ SEMANTIC_GENERATION_PROMPT = """
 """
 
 
-def get_group_semantic_generation_prompt(
+def get_group_foresight_generation_prompt(
     memcell_summary: str, memcell_episode: str, user_ids: list = None
 ) -> str:
     """
-    生成群组语义记忆联想预测的提示词
+    生成群组前瞻联想预测的提示词
 
     Args:
         memcell_summary: MemCell的摘要内容
@@ -320,7 +320,7 @@ def get_group_semantic_generation_prompt(
     if user_ids:
         user_ids_info = f"\n**用户ID信息：**\n{', '.join(user_ids)}\n"
 
-    prompt = f"""{GROUP_SEMANTIC_GENERATION_PROMPT}
+    prompt = f"""{GROUP_FORESIGHT_GENERATION_PROMPT}
 
 ## 输入内容：
 
@@ -335,11 +335,11 @@ def get_group_semantic_generation_prompt(
     return prompt
 
 
-def get_semantic_generation_prompt(
+def get_foresight_generation_prompt(
     episode_memory: str, episode_content: str, user_id: str = None
 ) -> str:
     """
-    生成个人语义记忆联想预测的提示词
+    生成个人前瞻联想预测的提示词
 
     Args:
         episode_memory: EpisodeMemory的摘要内容
@@ -354,7 +354,7 @@ def get_semantic_generation_prompt(
     if user_id:
         user_id_info = f"\n**用户ID信息：**\n{user_id}\n"
 
-    prompt = f"""{SEMANTIC_GENERATION_PROMPT}
+    prompt = f"""{FORESIGHT_GENERATION_PROMPT}
 
 ## 输入内容：
 

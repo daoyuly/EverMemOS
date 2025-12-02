@@ -381,12 +381,12 @@ class MemoryManager:
             query_vector_list = query_vector.tolist()  # 转换为列表格式
             logger.debug(f"查询文本向量化完成，向量维度: {len(query_vector_list)}")
 
-            if MemoryType.SEMANTIC_MEMORY in retrieve_mem_request.memory_types:
-                from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
-                    SemanticMemoryMilvusRepository,
+            if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
+                from infra_layer.adapters.out.search.repository.foresight_milvus_repository import (
+                    ForesightMilvusRepository,
                 )
 
-                milvus_repo = get_bean_by_type(SemanticMemoryMilvusRepository)
+                milvus_repo = get_bean_by_type(ForesightMilvusRepository)
             elif MemoryType.PERSONAL_EVENT_LOG in retrieve_mem_request.memory_types:
                 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
                     EventLogMilvusRepository,
@@ -399,8 +399,8 @@ class MemoryManager:
             # 处理时间范围过滤条件
             start_time_dt = None
             end_time_dt = None
-            semantic_start_dt = None
-            semantic_end_dt = None
+            foresight_start_dt = None
+            foresight_end_dt = None
             current_time_dt = None
 
             if start_time is not None:
@@ -419,14 +419,14 @@ class MemoryManager:
                 else:
                     end_time_dt = end_time
 
-            # 处理语义记忆时间范围（仅对 semantic_memory 有效）
-            if MemoryType.SEMANTIC_MEMORY in retrieve_mem_request.memory_types:
+            # 处理前瞻时间范围（仅对 foresight 有效）
+            if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
                 if retrieve_mem_request.start_time:
-                    semantic_start_dt = datetime.strptime(
+                    foresight_start_dt = datetime.strptime(
                         retrieve_mem_request.start_time, "%Y-%m-%d"
                     )
                 if retrieve_mem_request.end_time:
-                    semantic_end_dt = datetime.strptime(
+                    foresight_end_dt = datetime.strptime(
                         retrieve_mem_request.end_time, "%Y-%m-%d"
                     )
                 if retrieve_mem_request.current_time:
@@ -435,13 +435,13 @@ class MemoryManager:
                     )
 
             # 调用 Milvus 的向量搜索（根据记忆类型传递不同的参数）
-            if MemoryType.SEMANTIC_MEMORY in retrieve_mem_request.memory_types:
-                # 语义记忆：支持时间范围和有效期过滤，支持 radius 参数
+            if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
+                # 前瞻：支持时间范围和有效期过滤，支持 radius 参数
                 search_results = await milvus_repo.vector_search(
                     query_vector=query_vector_list,
                     user_id=user_id,
-                    start_time=semantic_start_dt,
-                    end_time=semantic_end_dt,
+                    start_time=foresight_start_dt,
+                    end_time=foresight_end_dt,
                     current_time=current_time_dt,
                     limit=top_k,
                     score_threshold=0.0,
@@ -547,12 +547,12 @@ class MemoryManager:
             logger.debug(f"查询文本向量化完成，向量维度: {len(query_vector_list)}")
 
             # 根据 memory_types 选择对应的 Milvus Repository
-            if MemoryType.SEMANTIC_MEMORY in retrieve_mem_request.memory_types:
-                from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
-                    SemanticMemoryMilvusRepository,
+            if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
+                from infra_layer.adapters.out.search.repository.foresight_milvus_repository import (
+                    ForesightMilvusRepository,
                 )
 
-                milvus_repo = get_bean_by_type(SemanticMemoryMilvusRepository)
+                milvus_repo = get_bean_by_type(ForesightMilvusRepository)
             elif MemoryType.PERSONAL_EVENT_LOG in retrieve_mem_request.memory_types:
                 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
                     EventLogMilvusRepository,
@@ -583,8 +583,8 @@ class MemoryManager:
                 else:
                     end_time_dt = end_time
 
-            # 处理语义记忆时间范围（仅对 semantic_memory 有效）
-            if MemoryType.SEMANTIC_MEMORY in retrieve_mem_request.memory_types:
+            # 处理前瞻时间范围（仅对 foresight 有效）
+            if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
                 if retrieve_mem_request.start_time:
                     start_time_dt = datetime.strptime(
                         retrieve_mem_request.start_time, "%Y-%m-%d"
@@ -599,8 +599,8 @@ class MemoryManager:
                     )
 
             # 调用 Milvus 的向量搜索（根据记忆类型传递不同的参数）
-            if MemoryType.SEMANTIC_MEMORY in retrieve_mem_request.memory_types:
-                # 语义记忆：支持时间范围和有效期过滤，支持 radius 参数
+            if MemoryType.FORESIGHT in retrieve_mem_request.memory_types:
+                # 前瞻：支持时间范围和有效期过滤，支持 radius 参数
                 search_results = await milvus_repo.vector_search(
                     query_vector=query_vector_list,
                     user_id=user_id,
@@ -1191,8 +1191,8 @@ class MemoryManager:
         time_range_days: int = 365,
         top_k: int = 20,
         retrieval_mode: str = "rrf",  # "embedding" | "bm25" | "rrf"
-        data_source: str = "episode",  # "episode" | "event_log" | "semantic_memory" | "profile"
-        current_time: Optional[datetime] = None,  # 当前时间，用于过滤有效期内的语义记忆
+        data_source: str = "episode",  # "episode" | "event_log" | "foresight" | "profile"
+        current_time: Optional[datetime] = None,  # 当前时间，用于过滤有效期内的前瞻
         radius: Optional[float] = None,  # COSINE 相似度阈值
     ) -> Dict[str, Any]:
         """
@@ -1211,9 +1211,9 @@ class MemoryManager:
             data_source: 数据源
                 - "episode": 从 episode 检索（默认）
                 - "event_log": 从 event_log 检索
-                - "semantic_memory": 从语义记忆检索
+                - "foresight": 从前瞻检索
                 - "profile": 直接按 user_id + group_id 检索档案
-            current_time: 当前时间，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
+            current_time: 当前时间，用于过滤有效期内的前瞻（仅 data_source=foresight 时有效）
 
         Returns:
             Dict 包含 memories, metadata
@@ -1265,10 +1265,10 @@ class MemoryManager:
             group_id: 群组ID过滤
             top_k: 返回结果数量
             retrieval_mode: 检索模式（embedding/bm25/rrf）
-            data_source: 数据源（memcell/event_log/semantic_memory）
+            data_source: 数据源（memcell/event_log/foresight）
             start_time: 开始时间（用于计算耗时）
-            current_time: 当前时间，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
-            radius: COSINE 相似度阈值（仅对非语义记忆有效）
+            current_time: 当前时间，用于过滤有效期内的前瞻（仅 data_source=foresight 时有效）
+            radius: COSINE 相似度阈值（仅对非前瞻有效）
 
         Returns:
             Dict 包含 memories, metadata
@@ -1283,12 +1283,12 @@ class MemoryManager:
 
             if retrieval_mode in ["embedding", "rrf"]:
                 # 根据 data_source 选择对应的 Milvus Repository
-                if data_source == "semantic_memory":
-                    from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
-                        SemanticMemoryMilvusRepository,
+                if data_source == "foresight":
+                    from infra_layer.adapters.out.search.repository.foresight_milvus_repository import (
+                        ForesightMilvusRepository,
                     )
 
-                    milvus_repo = get_bean_by_type(SemanticMemoryMilvusRepository)
+                    milvus_repo = get_bean_by_type(ForesightMilvusRepository)
                 elif data_source == "event_log":
                     from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
                         EventLogMilvusRepository,
@@ -1306,7 +1306,7 @@ class MemoryManager:
                 # 向量检索
                 # 注意：为了确保能检索到足够的候选，增加 limit
                 # Milvus 限制: topk 最大为 16384
-                # 为了解决 EventLog/SemanticMemory 只返回1条的问题,大幅增加 limit
+                # 为了解决 EventLog/Foresight 只返回1条的问题,大幅增加 limit
                 retrieval_limit = min(max(top_k * 200, 1000), 16384)  # 至少 1000 条,最多 16384 条
 
                 
@@ -1318,7 +1318,7 @@ class MemoryManager:
                     limit=retrieval_limit,
                     radius=radius,
                 )
-                if data_source == "semantic_memory":
+                if data_source == "foresight":
                     milvus_kwargs["current_time"] = current_time
 
                 logger.info(
@@ -1330,7 +1330,7 @@ class MemoryManager:
 
                 # 处理 Milvus 检索结果
                 # 根据 data_source 判断度量类型：
-                # - semantic_memory 和 episode 使用 COSINE，score 就是相似度（范围 -1 到 1）
+                # - foresight 和 episode 使用 COSINE，score 就是相似度（范围 -1 到 1）
                 # - event_log 使用 L2，score 是距离（范围 0 到 +∞），需要转换为相似度
                 for result in milvus_results:
                     score = result.get('score', 0)
@@ -1354,12 +1354,12 @@ class MemoryManager:
 
             if retrieval_mode in ["bm25", "rrf"]:
                 # 根据 data_source 选择对应的 ES Repository
-                if data_source == "semantic_memory":
-                    from infra_layer.adapters.out.search.repository.semantic_memory_es_repository import (
-                        SemanticMemoryEsRepository,
+                if data_source == "foresight":
+                    from infra_layer.adapters.out.search.repository.foresight_es_repository import (
+                        ForesightEsRepository,
                     )
 
-                    es_repo = get_bean_by_type(SemanticMemoryEsRepository)
+                    es_repo = get_bean_by_type(ForesightEsRepository)
                 elif data_source == "event_log":
                     from infra_layer.adapters.out.search.repository.event_log_es_repository import (
                         EventLogEsRepository,
@@ -1391,7 +1391,7 @@ class MemoryManager:
                     group_id=group_id,
                     size=retrieval_size,
                 )
-                if data_source == "semantic_memory" and current_time is not None:
+                if data_source == "foresight" and current_time is not None:
                     es_kwargs["current_time"] = current_time
                 hits = await es_repo.multi_search(**es_kwargs)
 
@@ -1440,14 +1440,14 @@ class MemoryManager:
                             if data_source == "episode"
                             else (
                                 result.get('content', '')
-                                if data_source == "semantic_memory"
+                                if data_source == "foresight"
                                 else result.get('atomic_fact', '')
                             )
                         ),
                         'summary': result.get('metadata', {}).get('summary', ''),
                         'evidence': (
                             result.get('evidence', '')
-                            if data_source == "semantic_memory"
+                            if data_source == "foresight"
                             else ''
                         ),
                         'metadata': result.get('metadata', {}),
@@ -1461,7 +1461,7 @@ class MemoryManager:
                     "embedding_candidates": embedding_count,
                     "total_latency_ms": (time.time() - start_time) * 1000,
                 }
-                memories = self._filter_semantic_memories_by_time(
+                memories = self._filter_foresight_memories_by_time(
                     memories, data_source, current_time
                 )
                 metadata["final_count"] = len(memories)
@@ -1477,7 +1477,7 @@ class MemoryManager:
                     "bm25_candidates": bm25_count,
                     "total_latency_ms": (time.time() - start_time) * 1000,
                 }
-                memories = self._filter_semantic_memories_by_time(
+                memories = self._filter_foresight_memories_by_time(
                     memories, data_source, current_time
                 )
                 metadata["final_count"] = len(memories)
@@ -1518,7 +1518,7 @@ class MemoryManager:
                         # 根据 data_source 获取正确的内容字段
                         content_field = 'episode'  # 默认
                         evidence_field = ''
-                        if data_source == "semantic_memory":
+                        if data_source == "foresight":
                             content_field = 'content'
                             evidence_field = doc.get('evidence', '')
                         elif data_source == "event_log":
@@ -1561,7 +1561,7 @@ class MemoryManager:
                     "bm25_candidates": bm25_count,
                     "total_latency_ms": (time.time() - start_time) * 1000,
                 }
-                memories = self._filter_semantic_memories_by_time(
+                memories = self._filter_foresight_memories_by_time(
                     memories, data_source, current_time
                 )
                 metadata["final_count"] = len(memories)
@@ -1643,13 +1643,13 @@ class MemoryManager:
                     return None
         return None
 
-    def _filter_semantic_memories_by_time(
+    def _filter_foresight_memories_by_time(
         self,
         memories: List[Dict[str, Any]],
         data_source: str,
         current_time: Optional[datetime],
     ) -> List[Dict[str, Any]]:
-        if data_source != "semantic_memory" or not current_time:
+        if data_source != "foresight" or not current_time:
             return memories
         current_dt = (
             current_time

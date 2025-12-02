@@ -14,7 +14,7 @@ from memory_layer.types import (
     MemoryType,
     MemCell,
     Memory,
-    SemanticMemoryItem,
+    ForesightItem,
 )
 from memory_layer.memory_extractor.event_log_extractor import EventLog
 from core.observation.logger import get_logger
@@ -27,7 +27,7 @@ from infra_layer.adapters.out.persistence.repository.conversation_meta_raw_repos
 )
 from biz_layer.mem_db_operations import (
     _convert_episode_memory_to_doc,
-    _convert_semantic_memory_to_doc,
+    _convert_foresight_to_doc,
     _convert_event_log_to_docs,
 )
 from biz_layer.mem_memorize import (
@@ -364,7 +364,7 @@ class MemorizeWorkerService:
         if if_memorize(memcell):
             old_memory_list = await load_core_memories(request, participants, current_time)
             
-            semantic_memories: List[SemanticMemoryItem] = []
+            foresight_memories: List[ForesightItem] = []
             event_logs: List[EventLog] = []
             parent_docs_map: Dict[str, Any] = {}
             episodic_source_memories: List[Memory] = group_episode_memories + episode_memories
@@ -405,13 +405,13 @@ class MemorizeWorkerService:
                 extraction_tasks.append(
                     memory_manager.extract_memory(
                         memcell=memcell,
-                        memory_type=MemoryType.SEMANTIC_MEMORY,
+                        memory_type=MemoryType.FORESIGHT,
                         user_id=episode_mem.user_id,
                         episode_memory=episode_mem,
                     )
                 )
                 task_metadata.append({
-                    'type': MemoryType.SEMANTIC_MEMORY,
+                    'type': MemoryType.FORESIGHT,
                     'episode_mem': episode_mem,
                 })
                 
@@ -455,7 +455,7 @@ class MemorizeWorkerService:
                         f"数量={len(result) if isinstance(result, list) else 1}"
                     )
                     
-                    if memory_type == MemoryType.SEMANTIC_MEMORY:
+                    if memory_type == MemoryType.FORESIGHT:
                         for mem in result:
                             mem.parent_event_id = episode_mem.event_id
                             mem.user_id = episode_mem.user_id
@@ -463,7 +463,7 @@ class MemorizeWorkerService:
                             mem.group_name = episode_mem.group_name
                             if getattr(mem, "user_name", None) is None:
                                 mem.user_name = episode_mem.user_name
-                            semantic_memories.append(mem)
+                            foresight_memories.append(mem)
                     elif memory_type == MemoryType.PERSONAL_EVENT_LOG:
                         result.parent_event_id = episode_mem.event_id
                         result.user_id = episode_mem.user_id
@@ -474,16 +474,16 @@ class MemorizeWorkerService:
                         event_logs.append(result)
             
             # ===== 第八步：保存 Semantic 和 EventLog =====
-            semantic_docs = []
-            for sem_mem in semantic_memories:
-                parent_doc = parent_docs_map.get(str(sem_mem.parent_event_id))
+            foresight_docs = []
+            for foresight_mem in foresight_memories:
+                parent_doc = parent_docs_map.get(str(foresight_mem.parent_event_id))
                 if not parent_doc:
                     logger.warning(
-                        f"[Worker-{worker_id}] ⚠️  未找到 parent_event_id={sem_mem.parent_event_id} 对应的 episodic_memory"
+                        f"[Worker-{worker_id}] ⚠️  未找到 parent_event_id={foresight_mem.parent_event_id} 对应的 episodic_memory"
                     )
                     continue
-                doc = _convert_semantic_memory_to_doc(sem_mem, parent_doc, current_time)
-                semantic_docs.append(doc)
+                doc = _convert_foresight_to_doc(foresight_mem, parent_doc, current_time)
+                foresight_docs.append(doc)
             
             event_log_docs = []
             for event_log in event_logs:
@@ -497,10 +497,10 @@ class MemorizeWorkerService:
                 event_log_docs.extend(docs)
             
             payloads: List[MemoryDocPayload] = []
-            if semantic_docs:
+            if foresight_docs:
                 payloads.extend(
-                    MemoryDocPayload(MemoryType.SEMANTIC_MEMORY, doc)
-                    for doc in semantic_docs
+                    MemoryDocPayload(MemoryType.FORESIGHT, doc)
+                    for doc in foresight_docs
                 )
             if event_log_docs:
                 payloads.extend(

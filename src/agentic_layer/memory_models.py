@@ -32,12 +32,12 @@ class MemoryType(str, Enum):
     CORE = "core"  # 核心记忆
 
     EPISODIC_MEMORY = "episodic_memory"
-    SEMANTIC_MEMORY = "semantic_memory"
+    FORESIGHT = "foresight"
     ENTITY = "entity"
     RELATION = "relation"
     BEHAVIOR_HISTORY = "behavior_history"
 
-    PERSONAL_SEMANTIC_MEMORY = "personal_semantic_memory"
+    PERSONAL_FORESIGHT = "personal_foresight"
     PERSONAL_EVENT_LOG = "personal_event_log"
 
     GROUP_PROFILE = "group_profile"  # 群组画像
@@ -140,8 +140,8 @@ class EpisodicMemoryModel:
 
 
 @dataclass
-class SemanticMemoryModel:
-    """语义记忆模型"""
+class ForesightModel:
+    """前瞻模型"""
 
     id: str
     user_id: str
@@ -258,7 +258,7 @@ MemoryModel = Union[
     ProfileModel,
     PreferenceModel,
     EpisodicMemoryModel,
-    SemanticMemoryModel,
+    ForesightModel,
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,

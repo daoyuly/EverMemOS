@@ -196,9 +196,9 @@ class I18nTexts:
             "en": "(showing first {shown} items)",
         },
         "retrieval_complete": {"zh": "检索完成", "en": "Retrieval Complete"},
-        "retrieval_semantic": {
-            "zh": "使用语义相似度进行检索",
-            "en": "Using semantic similarity for retrieval",
+        "retrieval_foresight": {
+            "zh": "使用前瞻相似度进行检索",
+            "en": "Using foresight similarity for retrieval",
         },
         "retrieval_latency": {
             "zh": "检索耗时: {latency}ms",

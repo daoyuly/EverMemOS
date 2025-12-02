@@ -1,17 +1,17 @@
 """
-语义记忆 Milvus 仓库
+前瞻 Milvus 仓库
 
-基于 BaseMilvusRepository 的语义记忆专用仓库类，提供高效的向量存储和检索功能。
+基于 BaseMilvusRepository 的前瞻专用仓库类，提供高效的向量存储和检索功能。
 主要功能包括向量存储、相似性搜索、过滤查询和文档管理。
-支持个人语义记忆和群组语义记忆。
+支持个人前瞻和群组前瞻。
 """
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 import json
 from core.oxm.milvus.base_repository import BaseMilvusRepository
-from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import (
-    SemanticMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.foresight_collection import (
+    ForesightCollection,
 )
 from core.observation.logger import get_logger
 from common_utils.datetime_utils import get_now_with_timezone
@@ -22,12 +22,12 @@ logger = get_logger(__name__)
 MILVUS_SIMILARITY_RADIUS = None  # COSINE 相似度阈值，可选范围 [-1, 1]
 
 
-@repository("semantic_memory_milvus_repository", primary=False)
-class SemanticMemoryMilvusRepository(
-    BaseMilvusRepository[SemanticMemoryCollection]
+@repository("foresight_milvus_repository", primary=False)
+class ForesightMilvusRepository(
+    BaseMilvusRepository[ForesightCollection]
 ):
     """
-    语义记忆 Milvus 仓库
+    前瞻 Milvus 仓库
 
     基于 BaseMilvusRepository 的专用仓库类，提供：
     - 高效的向量存储和检索
@@ -35,16 +35,16 @@ class SemanticMemoryMilvusRepository(
     - 文档创建和管理
     - 向量索引管理
     
-    同时支持个人语义记忆和群组语义记忆。
+    同时支持个人前瞻和群组前瞻。
     """
 
     def __init__(self):
-        """初始化语义记忆仓库"""
-        super().__init__(SemanticMemoryCollection)
+        """初始化前瞻仓库"""
+        super().__init__(ForesightCollection)
 
     # ==================== 文档创建和管理 ====================
 # TODO:添加 username 
-    async def create_and_save_semantic_memory(
+    async def create_and_save_foresight(
         self,
         id: str,
         user_id: Optional[str],
@@ -65,20 +65,20 @@ class SemanticMemoryMilvusRepository(
         updated_at: Optional[datetime] = None,
     ) -> Dict[str, Any]:
         """
-        创建并保存个人语义记忆文档
+        创建并保存个人前瞻文档
 
         Args:
-            id: 语义记忆唯一标识
+            id: 前瞻唯一标识
             user_id: 用户ID（必需）
-            content: 语义记忆内容（必需）
+            content: 前瞻内容（必需）
             parent_episode_id: 父情景记忆ID（必需）
             vector: 文本向量（必需）
             group_id: 群组ID
             participants: 相关参与者列表
-            start_time: 语义记忆开始时间
-            end_time: 语义记忆结束时间
+            start_time: 前瞻开始时间
+            end_time: 前瞻结束时间
             duration_days: 持续天数
-            evidence: 支持该语义记忆的证据
+            evidence: 支持该前瞻的证据
             search_content: 搜索内容列表
             extend: 扩展字段
             vector_model: 向量化模型
@@ -132,7 +132,7 @@ class SemanticMemoryMilvusRepository(
             await self.insert(entity)
 
             logger.debug(
-                "✅ 创建个人语义记忆文档成功: memory_id=%s, user_id=%s",
+                "✅ 创建个人前瞻文档成功: memory_id=%s, user_id=%s",
                 id,
                 user_id,
             )
@@ -147,7 +147,7 @@ class SemanticMemoryMilvusRepository(
             }
 
         except Exception as e:
-            logger.error("❌ 创建个人语义记忆文档失败: event_id=%s, error=%s", event_id, e)
+            logger.error("❌ 创建个人前瞻文档失败: event_id=%s, error=%s", event_id, e)
             raise
 
     # ==================== 搜索功能 ====================
@@ -174,9 +174,9 @@ class SemanticMemoryMilvusRepository(
             user_id: 用户ID过滤
             group_id: 群组ID过滤
             parent_episode_id: 父情景记忆ID过滤
-            start_time: 语义记忆开始时间过滤
-            end_time: 语义记忆结束时间过滤
-            current_time: 当前时间，用于过滤有效期内的语义记忆
+            start_time: 前瞻开始时间过滤
+            end_time: 前瞻结束时间过滤
+            current_time: 当前时间，用于过滤有效期内的前瞻
             limit: 返回结果数量
             score_threshold: 相似度阈值
             radius: COSINE 相似度阈值（可选，默认使用 MILVUS_SIMILARITY_RADIUS）
@@ -210,7 +210,7 @@ class SemanticMemoryMilvusRepository(
             if end_time:
                 filter_expr.append(f"end_time <= {int(end_time.timestamp())}")
             if current_time:
-                # 过滤出当前时间在有效期内的语义记忆
+                # 过滤出当前时间在有效期内的前瞻
                 current_ts = int(current_time.timestamp())
                 filter_expr.append(
                     f"(start_time <= {current_ts} and end_time >= {current_ts})"
@@ -304,10 +304,10 @@ class SemanticMemoryMilvusRepository(
 
     async def delete_by_id(self, memory_id: str) -> bool:
         """
-        根据memory_id删除语义记忆文档
+        根据memory_id删除前瞻文档
 
         Args:
-            memory_id: 语义记忆唯一标识
+            memory_id: 前瞻唯一标识
 
         Returns:
             删除成功返回 True，否则返回 False
@@ -315,11 +315,11 @@ class SemanticMemoryMilvusRepository(
         try:
             success = await super().delete_by_id(memory_id)
             if success:
-                logger.debug("✅ 根据memory_id删除语义记忆成功: memory_id=%s", memory_id)
+                logger.debug("✅ 根据memory_id删除前瞻成功: memory_id=%s", memory_id)
             return success
         except Exception as e:
             logger.error(
-                "❌ 根据memory_id删除语义记忆失败: memory_id=%s, error=%s",
+                "❌ 根据memory_id删除前瞻失败: memory_id=%s, error=%s",
                 memory_id,
                 e,
             )
@@ -327,7 +327,7 @@ class SemanticMemoryMilvusRepository(
 
     async def delete_by_parent_episode_id(self, parent_episode_id: str) -> int:
         """
-        根据父情景记忆ID删除所有关联的语义记忆
+        根据父情景记忆ID删除所有关联的前瞻
 
         Args:
             parent_episode_id: 父情景记忆ID
@@ -347,12 +347,12 @@ class SemanticMemoryMilvusRepository(
                 await self.collection.delete(expr)
 
             logger.debug(
-                "✅ 根据parent_episode_id删除语义记忆成功: 删除了 %d 条记录", delete_count
+                "✅ 根据parent_episode_id删除前瞻成功: 删除了 %d 条记录", delete_count
             )
             return delete_count
 
         except Exception as e:
-            logger.error("❌ 根据parent_episode_id删除语义记忆失败: %s", e)
+            logger.error("❌ 根据parent_episode_id删除前瞻失败: %s", e)
             raise
 
     async def delete_by_filters(
@@ -363,7 +363,7 @@ class SemanticMemoryMilvusRepository(
         end_time: Optional[datetime] = None,
     ) -> int:
         """
-        根据过滤条件批量删除语义记忆文档
+        根据过滤条件批量删除前瞻文档
 
         Args:
             user_id: 用户ID过滤
@@ -404,11 +404,11 @@ class SemanticMemoryMilvusRepository(
             await self.collection.delete(expr)
 
             logger.debug(
-                "✅ 根据过滤条件批量删除语义记忆成功: 删除了 %d 条记录", delete_count
+                "✅ 根据过滤条件批量删除前瞻成功: 删除了 %d 条记录", delete_count
             )
             return delete_count
 
         except Exception as e:
-            logger.error("❌ 根据过滤条件批量删除语义记忆失败: %s", e)
+            logger.error("❌ 根据过滤条件批量删除前瞻失败: %s", e)
             raise
 

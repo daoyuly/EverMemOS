@@ -139,9 +139,9 @@ def patch_llm_provider():
                     else:
                         stage = "Episode提取"
                     break
-            # Semantic 提取
-            elif 'semantic_memory_extractor' in filename:
-                stage = "语义记忆提取 (Semantic)"
+            # Foresight 提取
+            elif 'foresight_extractor' in filename:
+                stage = "前瞻提取 (Foresight)"
                 break
             # Event Log 提取
             elif 'event_log_extractor' in filename:
@@ -398,35 +398,35 @@ class TestMemoryLayerRefactored:
         
         return personal_episodes
     
-    async def test_04_extract_semantic_memory(self, memcell, episode):
-        """测试4：提取 Semantic Memory（基于 Episode）"""
+    async def test_04_extract_foresight(self, memcell, episode):
+        """测试4：提取 Foresight（基于 Episode）"""
         print("\n" + "="*80)
         print("测试4：提取 Semantic Memory")
         print("="*80)
         
-        # 提取 Semantic Memory
-        semantic_memories = await self.memory_manager.extract_memory(
+        # 提取 Foresight
+        foresight_memories = await self.memory_manager.extract_memory(
             memcell=memcell,
-            memory_type=MemoryType.SEMANTIC_MEMORY,
+            memory_type=MemoryType.FORESIGHT,
             episode_memory=episode,
         )
         
         # 验证结果
-        assert semantic_memories is not None, "Semantic memories 不应为 None"
-        assert isinstance(semantic_memories, list), f"应该返回 list，实际类型: {type(semantic_memories)}"
+        assert foresight_memories is not None, "Foresight memories 不应为 None"
+        assert isinstance(foresight_memories, list), f"应该返回 list，实际类型: {type(foresight_memories)}"
         
-        if len(semantic_memories) > 0:
-            print(f"✅ Semantic Memory 提取成功:")
-            print(f"   - 提取了 {len(semantic_memories)} 条语义记忆")
+        if len(foresight_memories) > 0:
+            print(f"✅ Foresight 提取成功:")
+            print(f"   - 提取了 {len(foresight_memories)} 条前瞻")
             
-            for i, sem in enumerate(semantic_memories[:3], 1):
-                print(f"   {i}. {sem.content}")
-                assert sem.embedding is not None, f"第{i}条 semantic memory 应该有 embedding"
-                assert sem.content is not None, f"第{i}条 semantic memory 应该有 content"
+            for i, foresight in enumerate(foresight_memories[:3], 1):
+                print(f"   {i}. {foresight.content}")
+                assert foresight.embedding is not None, f"第{i}条 foresight 应该有 embedding"
+                assert foresight.content is not None, f"第{i}条 foresight 应该有 content"
         else:
             print("⚠️  没有提取到 Semantic Memory")
         
-        return semantic_memories
+        return foresight_memories
     
     async def test_05_extract_event_log(self, memcell, episode):
         """测试5：提取 Event Log（基于 Episode）"""
@@ -544,7 +544,7 @@ class TestMemoryLayerRefactored:
             
             # 测试4: 提取 Semantic Memory（使用第一个个人 Episode）
             if personal_episodes:
-                semantic_memories = await self.test_04_extract_semantic_memory(memcell, personal_episodes[0])
+                foresights = await self.test_04_extract_foresight(memcell, personal_episodes[0])
             
             # 测试5: 提取 Event Log（使用第一个个人 Episode）
             if personal_episodes:
@@ -562,7 +562,7 @@ class TestMemoryLayerRefactored:
             print(f"  - 群组 Episode: ✓")
             print(f"  - 个人 Episode: ✓ ({len(personal_episodes)} 个)")
             if personal_episodes:
-                print(f"  - Semantic Memory: ✓ ({len(semantic_memories) if semantic_memories else 0} 条)")
+                print(f"  - Foresight: ✓ ({len(foresights) if foresights else 0} 条)")
                 print(f"  - Event Log: {'✓' if event_log else '✗'}")
             print(f"  - LLM 调用总数: {llm_logger.call_count}")
             print("="*80)

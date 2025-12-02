@@ -17,7 +17,7 @@ from agentic_layer.memory_models import (
     ProfileModel,
     PreferenceModel,
     EpisodicMemoryModel,
-    SemanticMemoryModel,
+    ForesightModel,
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,
@@ -83,15 +83,15 @@ class TestFakeFetchMemoryService:
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
-    async def test_find_by_user_id_semantic_memory(self, service):
-        """测试查找语义记忆"""
+    async def test_find_by_user_id_foresight(self, service):
+        """测试查找前瞻"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.SEMANTIC_MEMORY, limit=5
+            "user_001", MemoryType.FORESIGHT, limit=5
         )
 
         assert response.total_count > 0
         assert all(
-            isinstance(memory, SemanticMemoryModel) for memory in response.memories
+            isinstance(memory, ForesightModel) for memory in response.memories
         )
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
@@ -237,7 +237,7 @@ class TestMemoryTypes:
                     MemoryType.PROFILE: ProfileModel,
                     MemoryType.PREFERENCE: PreferenceModel,
                     MemoryType.EPISODIC_MEMORY: EpisodicMemoryModel,
-                    MemoryType.SEMANTIC_MEMORY: SemanticMemoryModel,
+                    MemoryType.FORESIGHT: ForesightModel,
                     MemoryType.ENTITY: EntityModel,
                     MemoryType.RELATION: RelationModel,
                     MemoryType.BEHAVIOR_HISTORY: BehaviorHistoryModel,

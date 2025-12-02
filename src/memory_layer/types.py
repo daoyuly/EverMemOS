@@ -72,8 +72,8 @@ class MemCell:
     linked_entities: Optional[List[str]] = None
     episode: Optional[str] = None  # 情景记忆内容
 
-    # 语义记忆联想预测字段
-    semantic_memories: Optional[List['SemanticMemoryItem']] = None  # 语义记忆联想列表
+    # 前瞻联想预测字段
+    foresights: Optional[List['ForesightItem']] = None  # 前瞻联想列表
     # Event Log 字段
     event_log: Optional[Any] = None  # Event Log 对象
     # extend fields, can be used to store any additional information
@@ -106,9 +106,9 @@ class MemCell:
             "linked_entities": self.linked_entities,
             "subject": self.subject,
             "episode": self.episode,
-            "semantic_memories": (
-                [item.to_dict() for item in self.semantic_memories]
-                if self.semantic_memories
+            "foresights": (
+                [item.to_dict() for item in self.foresights]
+                if self.foresights
                 else None
             ),
             "event_log": (
@@ -150,8 +150,8 @@ class Memory:
 
     memcell_event_id_list: Optional[List[str]] = None
     user_name: Optional[str] = None
-    # 语义记忆联想预测字段
-    semantic_memories: Optional[List['SemanticMemoryItem']] = None  # 语义记忆联想列表
+    # 前瞻联想预测字段
+    foresights: Optional[List['ForesightItem']] = None  # 前瞻联想列表
     extend: Optional[Dict[str, Any]] = None
 
     def __post_init__(self):
@@ -184,9 +184,9 @@ class Memory:
             "type": self.type.value if self.type else None,
             "keywords": self.keywords,
             "linked_entities": self.linked_entities,
-            "semantic_memories": (
-                [item.to_dict() for item in self.semantic_memories]
-                if self.semantic_memories
+            "foresights": (
+                [item.to_dict() for item in self.foresights]
+                if self.foresights
                 else None
             ),
             "extend": self.extend,
@@ -194,11 +194,11 @@ class Memory:
 
 
 @dataclass
-class SemanticMemory:
+class Foresight:
     """
-    语义记忆数据模型
+    前瞻数据模型
 
-    用于存储从情景记忆中提取的语义知识
+    用于存储从情景记忆中提取的前瞻知识
     """
 
     user_id: str
@@ -234,11 +234,11 @@ class SemanticMemory:
 
 
 @dataclass
-class SemanticMemoryItem:
+class ForesightItem:
     """
-    语义记忆联想项目
+    前瞻联想项目
 
-    包含时间信息的语义记忆联想预测
+    包含时间信息的前瞻联想预测
     """
     content: str
     evidence: Optional[str] = None  # 原始证据，支持该联想预测的具体事实（不超过30字）

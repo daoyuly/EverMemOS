@@ -15,8 +15,8 @@ import uuid
 
 
 from core.di import get_bean_by_type, get_bean, service
-from infra_layer.adapters.out.persistence.repository.semantic_memory_raw_repository import (
-    SemanticMemoryRawRepository,
+from infra_layer.adapters.out.persistence.repository.foresight_raw_repository import (
+    ForesightRawRepository,
 )
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
     EpisodicMemoryRawRepository,
@@ -46,7 +46,7 @@ from .memory_models import (
     ProfileModel,
     PreferenceModel,
     EpisodicMemoryModel,
-    SemanticMemoryModel,
+    ForesightModel,
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,
@@ -154,7 +154,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
 
     def __init__(self):
         """初始化服务"""
-        self._semantic_repo = None
+        self._foresight_repo = None
         self._episodic_repo = None
         self._core_repo = None
         self._entity_repo = None
@@ -165,8 +165,8 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
 
     def _get_repositories(self):
         """获取 Repository 实例"""
-        if self._semantic_repo is None:
-            self._semantic_repo = get_bean_by_type(SemanticMemoryRawRepository)
+        if self._foresight_repo is None:
+            self._foresight_repo = get_bean_by_type(ForesightRawRepository)
         if self._episodic_repo is None:
             self._episodic_repo = get_bean_by_type(EpisodicMemoryRawRepository)
         if self._core_repo is None:
@@ -300,25 +300,25 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=metadata,
         )
 
-    async def _convert_semantic_memory(self, semantic_memory) -> SemanticMemoryModel:
-        """转换语义记忆文档为模型"""
+    async def _convert_foresight(self, foresight) -> ForesightModel:
+        """转换前瞻文档为模型"""
         metadata = await self._get_employee_metadata(
-            user_id=semantic_memory.user_id,
+            user_id=foresight.user_id,
             source="user_input",
-            memory_type="semantic_memory",
+            memory_type="foresight",
         )
 
-        return SemanticMemoryModel(
-            id=str(semantic_memory.id),
-            user_id=semantic_memory.user_id,
-            concept=semantic_memory.subject,
-            definition=semantic_memory.description,
-            category="语义记忆",
+        return ForesightModel(
+            id=str(foresight.id),
+            user_id=foresight.user_id,
+            concept=foresight.subject,
+            definition=foresight.description,
+            category="前瞻",
             related_concepts=[],
             confidence_score=1.0,
             source="用户输入",
-            created_at=semantic_memory.created_at,
-            updated_at=semantic_memory.updated_at,
+            created_at=foresight.created_at,
+            updated_at=foresight.updated_at,
             metadata=metadata,
         )
 
@@ -459,12 +459,12 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                             ]
                     else:
                         memories = []
-                case MemoryType.SEMANTIC_MEMORY:
-                    # 语义记忆：每个用户只有一个语义记忆文档
-                    semantic_memory = await self._semantic_repo.get_by_user_id(user_id)
-                    if semantic_memory:
+                case MemoryType.FORESIGHT:
+                    # 前瞻：每个用户只有一个前瞻文档
+                    foresight = await self._foresight_repo.get_by_user_id(user_id)
+                    if foresight:
                         memories = [
-                            await self._convert_semantic_memory(semantic_memory)
+                            await self._convert_foresight(foresight)
                         ]
                     else:
                         memories = []
@@ -640,13 +640,13 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             self._get_repositories()
 
             match memory_type:
-                case MemoryType.SEMANTIC_MEMORY:
-                    # 语义记忆通过用户ID查询
-                    semantic_memory = await self._semantic_repo.get_by_user_id(
+                case MemoryType.FORESIGHT:
+                    # 前瞻通过用户ID查询
+                    foresight = await self._foresight_repo.get_by_user_id(
                         memory_id
                     )
-                    if semantic_memory:
-                        return self._convert_semantic_memory(semantic_memory)
+                    if foresight:
+                        return self._convert_foresight(foresight)
 
                 case MemoryType.EPISODIC_MEMORY:
                     # 情景记忆通过事件ID查询，需要用户ID

@@ -11,8 +11,8 @@ from pymilvus import utility, Collection
 from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import (
     EpisodicMemoryCollection,
 )
-from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import (
-    SemanticMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.foresight_collection import (
+    ForesightCollection,
 )
 from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
     EventLogCollection,
@@ -20,8 +20,8 @@ from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
 from infra_layer.adapters.out.search.elasticsearch.memory.episodic_memory import (
     EpisodicMemoryDoc,
 )
-from infra_layer.adapters.out.search.elasticsearch.memory.semantic_memory import (
-    SemanticMemoryDoc,
+from infra_layer.adapters.out.search.elasticsearch.memory.foresight import (
+    ForesightDoc,
 )
 from infra_layer.adapters.out.search.elasticsearch.memory.event_log import (
     EventLogDoc,
@@ -116,7 +116,7 @@ def _clear_milvus(
     stats: Dict[str, Any] = {"cleared": [], "errors": []}
     collection_classes = [
         EpisodicMemoryCollection,
-        SemanticMemoryCollection,
+        ForesightCollection,
         EventLogCollection,
     ]
     for cls in collection_classes:
@@ -194,7 +194,7 @@ async def _clear_elasticsearch(
 
         alias_names = [
             EpisodicMemoryDoc._index._name,
-            SemanticMemoryDoc._index._name,
+            ForesightDoc._index._name,
             EventLogDoc._index._name,
         ]
 
@@ -218,7 +218,7 @@ async def _clear_elasticsearch(
                 await es_client.indices.delete_alias(index="*", name=alias, ignore=[404])
             es_client_wrapper._initialized = False
             await es_client_wrapper.initialize_indices(
-                [EpisodicMemoryDoc, SemanticMemoryDoc, EventLogDoc]
+                [EpisodicMemoryDoc, ForesightDoc, EventLogDoc]
             )
             stats["recreated"] = True
             if verbose:

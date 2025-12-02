@@ -1,11 +1,11 @@
 """
-Semantic Memory Association Prediction Prompt Templates
+Foresight Association Prediction Prompt Templates
 
-Used to generate semantic memory association predictions based on MemCell and EpisodeMemory content
+Used to generate foresight association predictions based on MemCell and EpisodeMemory content
 """
 
-GROUP_SEMANTIC_GENERATION_PROMPT = """
-You are an advanced semantic analysis agent. Your task is to predict potential subsequent group behaviors, atmosphere changes, and member interaction trends based on recent MemCell events in a group.
+GROUP_FORESIGHT_GENERATION_PROMPT = """
+You are an advanced foresight analysis agent. Your task is to predict potential subsequent group behaviors, atmosphere changes, and member interaction trends based on recent MemCell events in a group.
 
 ## Task Objectives:
 1. **Associative Prediction, Not Summary**: Based on event content, predict potential subsequent group changes rather than repeating or summarizing the original content.
@@ -87,7 +87,7 @@ Return results as a JSON array, each association includes time information:
 ]
 
 ## Important Notes:
-- **Association-Oriented**: Focus on "group-level semantic associations," predicting potential subsequent group changes based on events, not summarizing individual daily behaviors.
+- **Association-Oriented**: Focus on "group-level foresight associations," predicting potential subsequent group changes based on events, not summarizing individual daily behaviors.
 - **Scenario Adaptation**: Language style must match the event scenario - use casual expressions for life scenarios, professional expressions for work scenarios.
 - **Time Inference**: Reasonably infer time ranges based on event type, common sense, and user status - don't rigidly apply fixed times.
 - **Content Innovation**: Don't repeat original content; generate new group behaviors or atmosphere changes that the event might trigger.
@@ -99,8 +99,8 @@ Return results as a JSON array, each association includes time information:
   - **Important**: Prioritize extracting explicit time information from the original text; if not available, make reasonable inferences based on event content and common sense. Time cannot be null
 """
 
-SEMANTIC_GENERATION_PROMPT = """
-You are an advanced personal semantic analysis agent. Your task is to predict the specific impacts that a user's latest MemCell event might have on their future personal behaviors, habits, decisions, and lifestyle.
+FORESIGHT_GENERATION_PROMPT = """
+You are an advanced personal foresight analysis agent. Your task is to predict the specific impacts that a user's latest MemCell event might have on their future personal behaviors, habits, decisions, and lifestyle.
 
 ## Task Objectives:
 1. **Personal-Level Association**: Analyze the event's potential impact on the user's future behavior, thinking patterns, life habits, or decision preferences from the personal perspective.
@@ -187,7 +187,7 @@ Return results as a JSON array, each association includes time information:
 - **Associative Innovation**: Don't repeat original content; generate personal behavioral, habitual, or decision-making changes that the event might trigger.
 - **Scenario Adaptation**: Language style must match the event scenario - use casual expressions for life scenarios, professional expressions for work scenarios.
 - **Time Inference**: Reasonably infer time ranges based on event type, personal status, and common sense - don't rigidly apply fixed times.
-- **Content Practicality**: Content must be specific, reasonable, practical, and usable by the system for personal semantic memory modeling.
+- **Content Practicality**: Content must be specific, reasonable, practical, and usable by the system for personal foresight modeling.
 - **Time Information Extraction Rules:**
   - start_time: Extract the specific date when the event occurred from the MemCell's timestamp field, format: YYYY-MM-DD
   - end_time: Extract the specific end time from the original content. If there's an explicit end time (e.g., "before October 24", "2025-11-15"), extract the specific date; otherwise, reasonably infer based on event content and common sense
@@ -197,11 +197,11 @@ Return results as a JSON array, each association includes time information:
 """
 
 
-def get_group_semantic_generation_prompt(
+def get_group_foresight_generation_prompt(
     memcell_summary: str, memcell_episode: str, user_ids: list = None
 ) -> str:
     """
-    Generate prompt for group semantic memory association prediction
+    Generate prompt for group foresight association prediction
 
     Args:
         memcell_summary: MemCell summary content
@@ -216,7 +216,7 @@ def get_group_semantic_generation_prompt(
     if user_ids:
         user_ids_info = f"\n**User ID Information:**\n{', '.join(user_ids)}\n"
 
-    prompt = f"""{GROUP_SEMANTIC_GENERATION_PROMPT}
+    prompt = f"""{GROUP_FORESIGHT_GENERATION_PROMPT}
 
 ## Input Content:
 
@@ -231,11 +231,11 @@ def get_group_semantic_generation_prompt(
     return prompt
 
 
-def get_semantic_generation_prompt(
+def get_foresight_generation_prompt(
     episode_memory: str, episode_content: str, user_id: str = None
 ) -> str:
     """
-    Generate prompt for personal semantic memory association prediction
+    Generate prompt for personal foresight association prediction
 
     Args:
         episode_memory: EpisodeMemory summary content
@@ -250,7 +250,7 @@ def get_semantic_generation_prompt(
     if user_id:
         user_id_info = f"\n**User ID Information:**\n{user_id}\n"
 
-    prompt = f"""{SEMANTIC_GENERATION_PROMPT}
+    prompt = f"""{FORESIGHT_GENERATION_PROMPT}
 
 ## Input Content:
 

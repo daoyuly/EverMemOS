@@ -1280,16 +1280,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_personal_embedding",
+      "test_name": "foresight_personal_embedding",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "embedding",
       "count": 5,
       "latency_ms": 302.85191535949707,
       "metadata": {
         "retrieval_mode": "embedding",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "total_latency_ms": 302.85191535949707,
         "final_count": 5
@@ -1340,16 +1340,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_personal_bm25",
+      "test_name": "foresight_personal_bm25",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "bm25",
       "count": 5,
       "latency_ms": 18.332242965698242,
       "metadata": {
         "retrieval_mode": "bm25",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "bm25_candidates": 6,
         "total_latency_ms": 18.332242965698242,
         "final_count": 5
@@ -1440,16 +1440,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_personal_rrf",
+      "test_name": "foresight_personal_rrf",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "rrf",
       "count": 5,
       "latency_ms": 262.2179985046387,
       "metadata": {
         "retrieval_mode": "rrf",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "bm25_candidates": 6,
         "total_latency_ms": 262.2179985046387,
@@ -1510,16 +1510,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_group_embedding",
+      "test_name": "foresight_group_embedding",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "embedding",
       "count": 5,
       "latency_ms": 241.12701416015625,
       "metadata": {
         "retrieval_mode": "embedding",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "total_latency_ms": 241.12701416015625,
         "final_count": 5
@@ -1570,16 +1570,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_group_bm25",
+      "test_name": "foresight_group_bm25",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "bm25",
       "count": 2,
       "latency_ms": 5.853891372680664,
       "metadata": {
         "retrieval_mode": "bm25",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "bm25_candidates": 2,
         "total_latency_ms": 5.853891372680664,
         "final_count": 2
@@ -1644,16 +1644,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_group_rrf",
+      "test_name": "foresight_group_rrf",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "rrf",
       "count": 5,
       "latency_ms": 234.24983024597168,
       "metadata": {
         "retrieval_mode": "rrf",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "bm25_candidates": 2,
         "total_latency_ms": 234.24983024597168,
@@ -1746,7 +1746,7 @@
             "type": "Conversation",
             "keywords": null,
             "linked_entities": null,
-            "semantic_memories": null,
+            "foresight_memories": null,
             "extend": null,
             "hard_skills": null,
             "soft_skills": null,
@@ -3324,16 +3324,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_personal_embedding",
+      "test_name": "foresight_personal_embedding",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "embedding",
       "count": 5,
       "latency_ms": 232.11193084716797,
       "metadata": {
         "retrieval_mode": "embedding",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "total_latency_ms": 232.11193084716797,
         "final_count": 5
@@ -3384,16 +3384,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_personal_bm25",
+      "test_name": "foresight_personal_bm25",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "bm25",
       "count": 5,
       "latency_ms": 4.518032073974609,
       "metadata": {
         "retrieval_mode": "bm25",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "bm25_candidates": 6,
         "total_latency_ms": 4.518032073974609,
         "final_count": 5
@@ -3484,16 +3484,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_personal_rrf",
+      "test_name": "foresight_personal_rrf",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "rrf",
       "count": 5,
       "latency_ms": 222.66221046447754,
       "metadata": {
         "retrieval_mode": "rrf",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "bm25_candidates": 6,
         "total_latency_ms": 222.66221046447754,
@@ -3554,16 +3554,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_group_embedding",
+      "test_name": "foresight_group_embedding",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "embedding",
       "count": 5,
       "latency_ms": 226.2730598449707,
       "metadata": {
         "retrieval_mode": "embedding",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "total_latency_ms": 226.2730598449707,
         "final_count": 5
@@ -3614,16 +3614,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_group_bm25",
+      "test_name": "foresight_group_bm25",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "bm25",
       "count": 2,
       "latency_ms": 2.460002899169922,
       "metadata": {
         "retrieval_mode": "bm25",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "bm25_candidates": 2,
         "total_latency_ms": 2.460002899169922,
         "final_count": 2
@@ -3688,16 +3688,16 @@
       ]
     },
     {
-      "test_name": "semantic_memory_group_rrf",
+      "test_name": "foresight_group_rrf",
       "status": "✅ 成功",
       "query": "北京",
-      "data_source": "semantic_memory",
+      "data_source": "foresight",
       "retrieval_mode": "rrf",
       "count": 5,
       "latency_ms": 262.6152038574219,
       "metadata": {
         "retrieval_mode": "rrf",
-        "data_source": "semantic_memory",
+        "data_source": "foresight",
         "embedding_candidates": 20,
         "bm25_candidates": 2,
         "total_latency_ms": 262.6152038574219,
@@ -3790,7 +3790,7 @@
             "type": "Conversation",
             "keywords": null,
             "linked_entities": null,
-            "semantic_memories": null,
+            "foresight_memories": null,
             "extend": null,
             "hard_skills": null,
             "soft_skills": null,

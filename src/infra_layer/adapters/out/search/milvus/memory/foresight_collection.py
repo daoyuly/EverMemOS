@@ -1,9 +1,9 @@
 """
-语义记忆 Milvus Collection 定义
+前瞻 Milvus Collection 定义
 
-基于 MilvusCollectionWithSuffix 实现的语义记忆专用 Collection 类。
-提供了与 SemanticMemoryMilvusRepository 兼容的 Schema 定义和索引配置。
-支持个人语义记忆和群组语义记忆。
+基于 MilvusCollectionWithSuffix 实现的前瞻专用 Collection 类。
+提供了与 ForesightMilvusRepository 兼容的 Schema 定义和索引配置。
+支持个人前瞻和群组前瞻。
 """
 
 from pymilvus import DataType, FieldSchema, CollectionSchema
@@ -13,11 +13,11 @@ from core.oxm.milvus.milvus_collection_base import (
 )
 
 
-class SemanticMemoryCollection(MilvusCollectionWithSuffix):
+class ForesightCollection(MilvusCollectionWithSuffix):
     """
-    语义记忆 Milvus Collection
+    前瞻 Milvus Collection
     
-    同时支持个人语义记忆和群组语义记忆，通过 group_id 字段区分。
+    同时支持个人前瞻和群组前瞻，通过 group_id 字段区分。
 
     使用方式：
         # 使用 Collection
@@ -26,7 +26,7 @@ class SemanticMemoryCollection(MilvusCollectionWithSuffix):
     """
 
     # Collection 基础名称
-    _COLLECTION_NAME = "semantic_memory"
+    _COLLECTION_NAME = "foresight"
 
     # Collection Schema 定义
     _SCHEMA = CollectionSchema(
@@ -37,7 +37,7 @@ class SemanticMemoryCollection(MilvusCollectionWithSuffix):
                 is_primary=True,
                 auto_id=False,
                 max_length=100,
-                description="语义记忆唯一标识",
+                description="前瞻唯一标识",
             ),
             FieldSchema(
                 name="vector",
@@ -74,12 +74,12 @@ class SemanticMemoryCollection(MilvusCollectionWithSuffix):
             FieldSchema(
                 name="start_time",
                 dtype=DataType.INT64,
-                description="语义记忆开始时间戳",
+                description="前瞻开始时间戳",
             ),
             FieldSchema(
                 name="end_time",
                 dtype=DataType.INT64,
-                description="语义记忆结束时间戳",
+                description="前瞻结束时间戳",
             ),
             FieldSchema(
                 name="duration_days",
@@ -90,13 +90,13 @@ class SemanticMemoryCollection(MilvusCollectionWithSuffix):
                 name="content",
                 dtype=DataType.VARCHAR,
                 max_length=5000,
-                description="语义记忆内容",
+                description="前瞻内容",
             ),
             FieldSchema(
                 name="evidence",
                 dtype=DataType.VARCHAR,
                 max_length=2000,
-                description="支持该语义记忆的证据",
+                description="支持该前瞻的证据",
             ),
             FieldSchema(
                 name="search_content",
@@ -117,7 +117,7 @@ class SemanticMemoryCollection(MilvusCollectionWithSuffix):
                 name="updated_at", dtype=DataType.INT64, description="更新时间戳"
             ),
         ],
-        description="个人语义记忆向量集合",
+        description="个人前瞻向量集合",
         enable_dynamic_field=True,
     )
 

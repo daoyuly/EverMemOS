@@ -495,10 +495,10 @@ EverMemOS provides two retrieval modes: **Lightweight** (fast) and **Agentic** (
 |-----------|----------|-------------|
 | `query` | Yes* | Natural language query (*optional for profile data source) |
 | `user_id` | No | User ID |
-| `data_source` | Yes | `episode` / `event_log` / `semantic_memory` / `profile` |
+| `data_source` | Yes | `episode` / `event_log` / `foresight` / `profile` |
 | `retrieval_mode` | Yes | `embedding` / `bm25` / `rrf` (recommended) |
 | `group_id` | No | Group ID |
-| `current_time` | No | Filter valid semantic_memory (format: YYYY-MM-DD) |
+| `current_time` | No | Filter valid foresight (format: YYYY-MM-DD) |
 | `top_k` | No | Number of results (default: 5) |
 
 **Example 1: Personal Memory**

@@ -54,7 +54,7 @@ class EpisodeMemoryExtractor(MemoryExtractor):
     2. 从 MemCell 的 original_data 中提取个人 Episode
     
     不包含：
-    - Semantic 提取（由 SemanticMemoryExtractor 负责）
+    - Foresight 提取（由 ForesightExtractor 负责）
     - EventLog 提取（由 EventLogExtractor 负责）
     """
     def __init__(

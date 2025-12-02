@@ -205,7 +205,7 @@ def check_milvus(detail: bool = False):
                 # 我们暂时仅保留计数功能，或者仅对已知集合查样例
                 known_pk_map = {
                     'episodic_memory_memsys': 'id',
-                    'semantic_memory_memsys': 'id',
+                    'foresight_memsys': 'id',
                     'event_log_memsys': 'id'
                 }
                 
@@ -214,7 +214,7 @@ def check_milvus(detail: bool = False):
                      try:
                         results = collection.query(
                             expr=f"{pk_field} >= 0",
-                            output_fields=["user_id", "timestamp", "episode", "atomic_fact", "content", "semantic"],
+                            output_fields=["user_id", "timestamp", "episode", "atomic_fact", "content", "foresight"],
                             limit=2
                         )
                         for result in results:

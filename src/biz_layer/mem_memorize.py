@@ -12,7 +12,7 @@ from memory_layer.types import (
     MemCell,
     Memory,
     RawDataType,
-    SemanticMemoryItem,
+    ForesightItem,
 )
 from memory_layer.memory_extractor.event_log_extractor import EventLog
 from memory_layer.memcell_extractor.base_memcell_extractor import RawData
@@ -34,8 +34,8 @@ from component.redis_provider import RedisProvider
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
     EpisodicMemoryRawRepository,
 )
-from infra_layer.adapters.out.persistence.repository.semantic_memory_record_repository import (
-    SemanticMemoryRecordRawRepository,
+from infra_layer.adapters.out.persistence.repository.foresight_record_repository import (
+    ForesightRecordRawRepository,
 )
 from infra_layer.adapters.out.persistence.repository.event_log_record_repository import (
     EventLogRecordRawRepository,
@@ -83,11 +83,11 @@ from infra_layer.adapters.out.search.elasticsearch.converter.episodic_memory_con
 from infra_layer.adapters.out.search.milvus.converter.episodic_memory_milvus_converter import (
     EpisodicMemoryMilvusConverter,
 )
-from infra_layer.adapters.out.search.elasticsearch.converter.semantic_memory_converter import (
-    SemanticMemoryConverter,
+from infra_layer.adapters.out.search.elasticsearch.converter.foresight_converter import (
+    ForesightConverter,
 )
-from infra_layer.adapters.out.search.milvus.converter.semantic_memory_milvus_converter import (
-    SemanticMemoryMilvusConverter,
+from infra_layer.adapters.out.search.milvus.converter.foresight_milvus_converter import (
+    ForesightMilvusConverter,
 )
 from infra_layer.adapters.out.search.elasticsearch.converter.event_log_converter import (
     EventLogConverter,
@@ -101,8 +101,8 @@ from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repositor
 from infra_layer.adapters.out.search.repository.episodic_memory_es_repository import (
     EpisodicMemoryEsRepository,
 )
-from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
-    SemanticMemoryMilvusRepository,
+from infra_layer.adapters.out.search.repository.foresight_milvus_repository import (
+    ForesightMilvusRepository,
 )
 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
     EventLogMilvusRepository,
@@ -117,13 +117,13 @@ class MemoryDocPayload:
     doc: Any
 
 
-def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
-    """将任意结构的语义记忆条目转换为 SemanticMemoryItem 实例"""
+def _clone_foresight_item(raw_item: Any) -> Optional[ForesightItem]:
+    """将任意结构的前瞻条目转换为 ForesightItem 实例"""
     if raw_item is None:
         return None
 
-    if isinstance(raw_item, SemanticMemoryItem):
-        return SemanticMemoryItem(
+    if isinstance(raw_item, ForesightItem):
+        return ForesightItem(
             content=raw_item.content,
             evidence=getattr(raw_item, "evidence", None),
             start_time=getattr(raw_item, "start_time", None),
@@ -134,7 +134,7 @@ def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
         )
 
     if isinstance(raw_item, dict):
-        return SemanticMemoryItem(
+        return ForesightItem(
             content=raw_item.get("content", ""),
             evidence=raw_item.get("evidence"),
             start_time=raw_item.get("start_time"),
@@ -329,7 +329,7 @@ def _convert_data_type_to_raw_data_type(data_type) -> RawDataType:
 from biz_layer.mem_db_operations import (
     _convert_timestamp_to_time,
     _convert_episode_memory_to_doc,
-    _convert_semantic_memory_to_doc,
+    _convert_foresight_to_doc,
     _convert_event_log_to_docs,
     _save_memcell_to_database,
     _save_profile_memory_to_core,
@@ -579,16 +579,16 @@ async def save_memory_docs(
     
         saved_result[MemoryType.EPISODIC_MEMORY] = saved_episodic
 
-    # Semantic
-    semantic_docs = grouped_docs.get(MemoryType.SEMANTIC_MEMORY, [])
-    if semantic_docs:
-        semantic_repo = get_bean_by_type(SemanticMemoryRecordRawRepository)
-        saved_semantic = await semantic_repo.create_batch(semantic_docs)
-        saved_result[MemoryType.SEMANTIC_MEMORY] = saved_semantic
+    # Foresight
+    foresight_docs = grouped_docs.get(MemoryType.FORESIGHT, [])
+    if foresight_docs:
+        foresight_repo = get_bean_by_type(ForesightRecordRawRepository)
+        saved_foresight = await foresight_repo.create_batch(foresight_docs)
+        saved_result[MemoryType.FORESIGHT] = saved_foresight
 
         sync_service = get_bean_by_type(MemorySyncService)
-        await sync_service.sync_batch_semantic_memories(
-            saved_semantic, sync_to_es=True, sync_to_milvus=True
+        await sync_service.sync_batch_foresights(
+            saved_foresight, sync_to_es=True, sync_to_milvus=True
         )
 
     # Event Log
