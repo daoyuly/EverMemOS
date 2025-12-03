@@ -39,7 +39,7 @@ def set_prompt_language(language: str) -> None:
     """设置记忆提取的 Prompt 语言
 
     通过设置环境变量 MEMORY_LANGUAGE 来控制 src/memory_layer/prompts 使用的语言。
-    这会影响所有记忆提取器（MemCell、Profile、Episode、Semantic）使用的 Prompt。
+    这会影响所有记忆提取器（MemCell、Profile、Episode、 Foresight）使用的 Prompt。
 
     Args:
         language: 语言代码，"zh" 或 "en"

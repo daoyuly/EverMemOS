@@ -924,7 +924,7 @@ def parse_args():
             "all",
             "memorize",
             "fetch_episodic",
-            "fetch_semantic",
+            "fetch_foresight",
             "fetch_event_log",
             "search_keyword",
             "search_vector",

@@ -910,8 +910,8 @@ class MemoryRepository(ABC):
         pass
     
     @abstractmethod
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """Semantic search"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """Foresight search"""
         pass
 ```
 
@@ -942,7 +942,7 @@ class MemoryMongoRepository(MemoryRepository):
         docs = await cursor.to_list(length=limit)
         return [Memory.from_dict(doc) for doc in docs]
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
         # Call vector search (encapsulated in infra layer)
         # May also call ElasticSearch or Milvus here
         ...
@@ -978,8 +978,8 @@ class MemoryService:
     
     async def search_memories(self, user_id: str, query: str) -> List[Memory]:
         """Search memories"""
-        # ✅ Correct: semantic search through repository
-        return await self._memory_repo.search_semantic(query, user_id)
+        # ✅ Correct: foresight search through repository
+        return await self._memory_repo.search_foresight(query, user_id)
 ```
 
 #### ❌ Wrong Example: Business Layer Directly Accesses Database
@@ -1175,8 +1175,8 @@ class MemoryHybridRepository(MemoryRepository):
         
         return memory_id
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """Semantic search: ES query + MongoDB supplement details"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """Foresight search: ES query + MongoDB supplement details"""
         # 1. ES search to get relevant IDs
         es_results = await self._es.search_by_text(query, top_k)
         memory_ids = [hit["_id"] for hit in es_results]

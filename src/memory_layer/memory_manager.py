@@ -39,7 +39,7 @@ class MemoryManager:
     
     职责：
     1. 提取 MemCell（边界检测 + 原始数据）
-    2. 提取 Episode/Semantic/EventLog/Profile 等记忆（基于 MemCell 或 episode）
+    2. 提取 Episode/Foresight/EventLog/Profile 等记忆（基于 MemCell 或 episode）
     3. 管理所有 Extractor 的生命周期
     4. 提供统一的记忆提取接口
     """
@@ -120,7 +120,7 @@ class MemoryManager:
         group_name: Optional[str] = None,
         old_memory_list: Optional[List[Memory]] = None,
         user_organization: Optional[List] = None,
-        episode_memory: Optional[Memory] = None,  # 用于 Semantic 和 EventLog 提取
+        episode_memory: Optional[Memory] = None,  # 用于 Foresight 和 EventLog 提取
     ):
         """
         提取单个记忆
@@ -135,7 +135,7 @@ class MemoryManager:
             group_name: 群组名称
             old_memory_list: 历史记忆列表
             user_organization: 用户组织信息
-            episode_memory: Episode 记忆（用于提取 Semantic/EventLog）
+            episode_memory: Episode 记忆（用于提取 Foresight/EventLog）
         
         Returns:
             - EPISODIC_MEMORY: 返回 Memory（群组或个人）

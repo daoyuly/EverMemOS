@@ -195,7 +195,7 @@ async def _extract_all_memories_for_memcell(
         memcell.subject = episode_memory.subject if episode_memory.subject else ""
         memcell.summary = episode_memory.episode[:200] + "..."
         
-        # 2. 提取 Semantic（可选）
+        # 2. 提取 Foresight（可选）
         if foresight_extractor:
             foresight_memories = await foresight_extractor.generate_foresight_memories_for_episode(
                 episode_memory,
@@ -409,7 +409,7 @@ async def process_single_conversation(
 
 
 
-        # Extract MemCells（传递语义记忆提取配置）
+        # Extract MemCells（传递前瞻提取配置）
         memcell_list = await memcell_extraction_from_conversation(
             raw_data_list,
             llm_provider=llm_provider,

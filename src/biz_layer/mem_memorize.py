@@ -475,7 +475,7 @@ async def process_memory_extraction(
     """
     记忆提取主流程
     
-    从 MemCell 开始，提取 Episode、Semantic、EventLog 等所有记忆类型。
+    从 MemCell 开始，提取 Episode、Foresight、EventLog 等所有记忆类型。
     """
     # 1. 初始化状态
     state = await _init_extraction_state(memcell, request, current_time)
@@ -607,7 +607,7 @@ async def _update_memcell_and_cluster(state: ExtractionState):
 
 
 async def _process_memories(state: ExtractionState, memory_manager: MemoryManager):
-    """保存 Episodes 并提取/保存 Semantic 和 EventLog"""
+    """保存 Episodes 并提取/保存 Foresight 和 EventLog"""
     await load_core_memories(state.request, state.participants, state.current_time)
     
     episodic_source = state.group_episode_memories + state.episode_memories

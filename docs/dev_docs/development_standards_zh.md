@@ -910,8 +910,8 @@ class MemoryRepository(ABC):
         pass
     
     @abstractmethod
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """语义搜索"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """前瞻搜索"""
         pass
 ```
 
@@ -942,7 +942,7 @@ class MemoryMongoRepository(MemoryRepository):
         docs = await cursor.to_list(length=limit)
         return [Memory.from_dict(doc) for doc in docs]
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
         # 调用向量搜索（在 infra 层封装）
         # 这里可能还会调用 ElasticSearch 或 Milvus
         ...
@@ -978,8 +978,8 @@ class MemoryService:
     
     async def search_memories(self, user_id: str, query: str) -> List[Memory]:
         """搜索记忆"""
-        # ✅ 正确：通过 repository 进行语义搜索
-        return await self._memory_repo.search_semantic(query, user_id)
+        # ✅ 正确：通过 repository 进行前瞻搜索
+        return await self._memory_repo.search_foresight(query, user_id)
 ```
 
 #### ❌ 错误示例：业务层直接访问数据库
@@ -1175,8 +1175,8 @@ class MemoryHybridRepository(MemoryRepository):
         
         return memory_id
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """语义搜索：ES 查询 + MongoDB 补充详情"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """前瞻搜索：ES 查询 + MongoDB 补充详情"""
         # 1. ES 搜索得到相关 ID
         es_results = await self._es.search_by_text(query, top_k)
         memory_ids = [hit["_id"] for hit in es_results]

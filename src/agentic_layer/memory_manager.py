@@ -1338,7 +1338,7 @@ class MemoryManager:
                     similarity = score
                     embedding_results.append((result, similarity))
                     if result.get('content'):
-                        result['semantic'] = result['content']
+                        result['foresight'] = result['content']
 
                 # 按相似度排序
                 embedding_results.sort(key=lambda x: x[1], reverse=True)
@@ -1409,7 +1409,7 @@ class MemoryManager:
                         'group_id': source.get('group_id', ''),
                         'timestamp': source.get('timestamp', ''),
                         'episode': source.get('episode', ''),
-                        'semantic': source.get('semantic', ''),
+                        'foresight': source.get('foresight', ''),
                         'evidence': source.get('evidence', ''),
                         'atomic_fact': source.get('atomic_fact', ''),
                         'search_content': source.get('search_content', []),
