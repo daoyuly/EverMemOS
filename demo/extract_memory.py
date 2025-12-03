@@ -1,5 +1,5 @@
 import asyncio
-import json
+import json, os
 from pathlib import Path
 import httpx
 
@@ -50,7 +50,11 @@ async def test_v3_memorize_api():
     print("=" * 100)
     
     # 加载真实对话数据
-    data_file = "data/assistant_chat_zh.json"
+    language = os.getenv("MEMORY_LANGUAGE", "en")
+    if language == "zh":
+        data_file = "data/assistant_chat_zh.json"
+    else:
+        data_file = "data/assistant_chat_en.json"
     # data_file = "data/group_chat_zh.json"
     try:
         test_messages, group_id, group_name = load_conversation_data(data_file)
