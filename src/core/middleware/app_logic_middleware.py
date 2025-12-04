@@ -1,9 +1,8 @@
 """
-应用上下文中间件
-负责提取和设置应用级别的上下文信息，如 task_id
+应用逻辑中间件
+负责提取和设置应用级别的上下文信息，以及处理应用相关的逻辑（如上报等）
 """
 
-import asyncio
 from typing import Callable, Optional
 from contextvars import Token
 
@@ -15,23 +14,24 @@ from starlette.types import ASGIApp
 from core.observation.logger import get_logger
 from core.context.context import clear_current_app_info, set_current_app_info
 from core.di.utils import get_bean_by_type
-from component.app_info_provider import AppInfoProvider
+from component.app_logic_provider import AppLogicProvider
 
 logger = get_logger(__name__)
 
 
-class AppContextMiddleware(BaseHTTPMiddleware):
+class AppLogicMiddleware(BaseHTTPMiddleware):
     """
-    应用上下文中间件
+    应用逻辑中间件
 
-    专门负责从 HTTP 请求中提取和设置应用级别的上下文信息：
+    负责从 HTTP 请求中提取和设置应用级别的上下文信息：
     - 与数据库会话中间件分离，职责单一
     - 支持多种提取策略（请求头、查询参数、URL路径、请求体等）
+    - 可扩展支持应用相关的逻辑处理（如上报等）
     """
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
-        self.app_info_provider = get_bean_by_type(AppInfoProvider)
+        self.app_logic_provider = get_bean_by_type(AppLogicProvider)
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         app_context_token = None
@@ -46,7 +46,7 @@ class AppContextMiddleware(BaseHTTPMiddleware):
             return response
 
         except Exception as e:
-            logger.error(f"应用上下文中间件处理异常: {e}")
+            logger.error(f"应用逻辑中间件处理异常: {e}")
             raise
 
         finally:
@@ -69,11 +69,9 @@ class AppContextMiddleware(BaseHTTPMiddleware):
             Optional[Token]: 应用上下文token
         """
         try:
-            # 使用 AppInfoProvider 提取应用级别的上下文信息
-            app_info_provider = get_bean_by_type(AppInfoProvider)
-            context_data = await app_info_provider.get_context_data_from_request(
-                request
-            )
+            # 使用 AppLogicProvider 提取应用级别的上下文信息
+            app_logic_provider = get_bean_by_type(AppLogicProvider)
+            context_data = await app_logic_provider.provide(request)
 
             # 设置应用上下文
             if context_data:
