@@ -7,8 +7,8 @@ Milvus Memory Collections
 from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import (
     EpisodicMemoryCollection,
 )
-from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import (
-    SemanticMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.foresight_collection import (
+    ForesightCollection,
 )
 from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
     EventLogCollection,
@@ -16,7 +16,7 @@ from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
 
 __all__ = [
     "EpisodicMemoryCollection",
-    "SemanticMemoryCollection",
+    "ForesightCollection",
     "EventLogCollection",
 ]
 

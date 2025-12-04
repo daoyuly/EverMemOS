@@ -63,7 +63,7 @@ class ConvMemCellExtractor(MemCellExtractor):
     
     不包含：
     - Episode 提取（由 EpisodeMemoryExtractor 负责）
-    - Semantic 提取（由 SemanticMemoryExtractor 负责）
+    - Foresight 提取（由 ForesightExtractor 负责）
     - EventLog 提取（由 EventLogExtractor 负责）
     - Embedding 计算（由 MemoryManager 负责）
     """
@@ -315,7 +315,7 @@ class ConvMemCellExtractor(MemCellExtractor):
         
         不包含（需要后续通过其他 extractor 填充）：
         - episode: 由 EpisodeMemoryExtractor 填充
-        - semantic_memories: 由 SemanticMemoryExtractor 填充
+        - foresights: 由 ForesightExtractor 填充
         - event_log: 由 EventLogExtractor 填充
         - extend['embedding']: 由 MemoryManager 填充
         """
@@ -387,7 +387,7 @@ class ConvMemCellExtractor(MemCellExtractor):
                 fallback_text.strip()[:200] if fallback_text else "会话片段"
             )
 
-            # 创建基础 MemCell（不包含 episode、semantic、event_log、embedding）
+            # 创建基础 MemCell（不包含 episode、foresight、event_log、embedding）
             memcell = MemCell(
                 event_id=str(uuid.uuid4()),
                 user_id_list=request.user_id_list,

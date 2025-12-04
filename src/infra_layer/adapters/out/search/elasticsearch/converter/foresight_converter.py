@@ -1,8 +1,8 @@
 """
-语义记忆 ES 转换器
+前瞻 ES 转换器
 
-负责将 MongoDB 的语义记忆文档转换为 Elasticsearch 的 SemanticMemoryDoc 文档。
-支持个人和群组语义记忆。
+负责将 MongoDB 的前瞻文档转换为 Elasticsearch 的 ForesightDoc 文档。
+支持个人和群组前瞻。
 """
 
 from typing import List
@@ -11,35 +11,35 @@ import jieba
 from core.oxm.es.base_converter import BaseEsConverter
 from core.observation.logger import get_logger
 from core.nlp.stopwords_utils import filter_stopwords
-from infra_layer.adapters.out.search.elasticsearch.memory.semantic_memory import (
-    SemanticMemoryDoc,
+from infra_layer.adapters.out.search.elasticsearch.memory.foresight import (
+    ForesightDoc,
 )
-from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record import (
-    SemanticMemoryRecord as MongoSemanticMemoryRecord,
+from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
+    ForesightRecord as MongoForesightRecord,
 )
 from datetime import datetime
 
 logger = get_logger(__name__)
 
 
-class SemanticMemoryConverter(BaseEsConverter[SemanticMemoryDoc]):
+class ForesightConverter(BaseEsConverter[ForesightDoc]):
     """
-    语义记忆 ES 转换器
+    前瞻 ES 转换器
     
-    将 MongoDB 的语义记忆文档转换为 Elasticsearch 的 SemanticMemoryDoc 文档。
-    支持个人和群组语义记忆。
+    将 MongoDB 的前瞻文档转换为 Elasticsearch 的 ForesightDoc 文档。
+    支持个人和群组前瞻。
     """
 
     @classmethod
-    def from_mongo(cls, source_doc: MongoSemanticMemoryRecord) -> SemanticMemoryDoc:
+    def from_mongo(cls, source_doc: MongoForesightRecord) -> ForesightDoc:
         """
-        从 MongoDB 语义记忆文档转换为 ES SemanticMemoryDoc 文档
+        从 MongoDB 前瞻文档转换为 ES ForesightDoc 文档
 
         Args:
-            source_doc: MongoDB 语义记忆文档实例
+            source_doc: MongoDB 前瞻文档实例
 
         Returns:
-            SemanticMemoryDoc: ES 文档实例
+            ForesightDoc: ES 文档实例
         """
         if source_doc is None:
             raise ValueError("MongoDB 文档不能为空")
@@ -61,14 +61,14 @@ class SemanticMemoryConverter(BaseEsConverter[SemanticMemoryDoc]):
             
             # 创建 ES 文档实例
             # 通过 meta 参数传递 id,确保幂等性(MongoDB _id -> ES _id)
-            es_doc = SemanticMemoryDoc(
+            es_doc = ForesightDoc(
                 meta={'id': str(source_doc.id)},
                 user_id=source_doc.user_id,
                 user_name=source_doc.user_name or "",
                 # 时间字段
                 timestamp=timestamp,
                 # 核心内容字段
-                semantic=source_doc.content,
+                foresight=source_doc.content,
                 evidence=source_doc.evidence or "",
                 search_content=search_content,  # BM25 搜索的核心字段
                 # 分类和标签字段
@@ -98,11 +98,11 @@ class SemanticMemoryConverter(BaseEsConverter[SemanticMemoryDoc]):
             return es_doc
 
         except Exception as e:
-            logger.error("从 MongoDB 语义记忆文档转换为 ES 文档失败: %s", e)
+            logger.error("从 MongoDB 前瞻文档转换为 ES 文档失败: %s", e)
             raise
 
     @classmethod
-    def _build_search_content(cls, source_doc: MongoSemanticMemoryRecord) -> List[str]:
+    def _build_search_content(cls, source_doc: MongoForesightRecord) -> List[str]:
         """
         构建搜索内容列表
         

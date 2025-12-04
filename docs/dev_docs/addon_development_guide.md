@@ -430,7 +430,7 @@ class CloudMemoryRepository(MemoryRepository):
     
     async def search(self, query: str, limit: int = 10) -> List[Memory]:
         """Hybrid search: vector search + full-text search + reranking"""
-        # 1. Vector search (semantic similarity)
+        # 1. Vector search (foresight similarity)
         vector_results = await self._vector_search(query, limit * 2)
         
         # 2. Full-text search (keyword matching)

@@ -1,20 +1,20 @@
-"""语义记忆与事件日志同步服务
+"""前瞻与事件日志同步服务
 
-负责将统一的语义记忆与事件日志写入 Milvus / Elasticsearch。
+负责将统一的前瞻与事件日志写入 Milvus / Elasticsearch。
 """
 
 from typing import Optional, List, Dict, Any
 import logging
 from datetime import datetime
 
-from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record import (
-    SemanticMemoryRecord,
+from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
+    ForesightRecord,
 )
-from infra_layer.adapters.out.search.elasticsearch.converter.semantic_memory_converter import (
-    SemanticMemoryConverter,
+from infra_layer.adapters.out.search.elasticsearch.converter.foresight_converter import (
+    ForesightConverter,
 )
-from infra_layer.adapters.out.search.milvus.converter.semantic_memory_milvus_converter import (
-    SemanticMemoryMilvusConverter,
+from infra_layer.adapters.out.search.milvus.converter.foresight_milvus_converter import (
+    ForesightMilvusConverter,
 )
 from infra_layer.adapters.out.persistence.document.memory.event_log_record import (
     EventLogRecord,
@@ -25,14 +25,14 @@ from infra_layer.adapters.out.search.elasticsearch.converter.event_log_converter
 from infra_layer.adapters.out.search.milvus.converter.event_log_milvus_converter import (
     EventLogMilvusConverter,
 )
-from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
-    SemanticMemoryMilvusRepository,
+from infra_layer.adapters.out.search.repository.foresight_milvus_repository import (
+    ForesightMilvusRepository,
 )
 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
     EventLogMilvusRepository,
 )
-from infra_layer.adapters.out.search.repository.semantic_memory_es_repository import (
-    SemanticMemoryEsRepository,
+from infra_layer.adapters.out.search.repository.foresight_es_repository import (
+    ForesightEsRepository,
 )
 from infra_layer.adapters.out.search.repository.event_log_es_repository import (
     EventLogEsRepository,
@@ -45,31 +45,31 @@ logger = logging.getLogger(__name__)
 
 @service(name="memory_sync_service", primary=True)
 class MemorySyncService:
-    """语义记忆与事件日志同步服务"""
+    """前瞻与事件日志同步服务"""
 
     def __init__(
         self,
-        semantic_milvus_repo: Optional[SemanticMemoryMilvusRepository] = None,
+        foresight_milvus_repo: Optional[ForesightMilvusRepository] = None,
         eventlog_milvus_repo: Optional[EventLogMilvusRepository] = None,
-        semantic_es_repo: Optional[SemanticMemoryEsRepository] = None,
+        foresight_es_repo: Optional[ForesightEsRepository] = None,
         eventlog_es_repo: Optional[EventLogEsRepository] = None,
     ):
         """初始化同步服务
         
         Args:
-            semantic_milvus_repo: 语义记忆 Milvus 仓库实例（可选，不提供则从 DI 获取）
+            foresight_milvus_repo: 前瞻 Milvus 仓库实例（可选，不提供则从 DI 获取）
             eventlog_milvus_repo: 事件日志 Milvus 仓库实例（可选，不提供则从 DI 获取）
-            semantic_es_repo: 语义记忆 ES 仓库实例（可选，不提供则从 DI 获取）
+            foresight_es_repo: 前瞻 ES 仓库实例（可选，不提供则从 DI 获取）
             eventlog_es_repo: 事件日志 ES 仓库实例（可选，不提供则从 DI 获取）
         """
-        self.semantic_milvus_repo = semantic_milvus_repo or get_bean_by_type(
-            SemanticMemoryMilvusRepository
+        self.foresight_milvus_repo = foresight_milvus_repo or get_bean_by_type(
+            ForesightMilvusRepository
         )
         self.eventlog_milvus_repo = eventlog_milvus_repo or get_bean_by_type(
             EventLogMilvusRepository
         )
-        self.semantic_es_repo = semantic_es_repo or get_bean_by_type(
-            SemanticMemoryEsRepository
+        self.foresight_es_repo = foresight_es_repo or get_bean_by_type(
+            ForesightEsRepository
         )
         self.eventlog_es_repo = eventlog_es_repo or get_bean_by_type(
             EventLogEsRepository
@@ -94,48 +94,48 @@ class MemorySyncService:
                     return None
         return None
 
-    async def sync_semantic_memory(
+    async def sync_foresight(
         self, 
-        semantic_memory: SemanticMemoryRecord,
+        foresight: ForesightRecord,
         sync_to_es: bool = True,
         sync_to_milvus: bool = True
     ) -> Dict[str, int]:
-        """同步单条语义记忆到 Milvus/ES
+        """同步单条前瞻到 Milvus/ES
         
         Args:
-            semantic_memory: SemanticMemoryRecord 文档对象
+            foresight: ForesightRecord 文档对象
             sync_to_es: 是否同步到 ES（默认 True）
             sync_to_milvus: 是否同步到 Milvus（默认 True）
             
         Returns:
-            同步统计信息 {"semantic_memory": 1}
+            同步统计信息 {"foresight": 1}
         """
-        stats = {"semantic_memory": 0, "es_records": 0}
+        stats = {"foresight": 0, "es_records": 0}
         
         try:
             # 从 MongoDB 读取 embedding，如果没有则跳过
-            if not semantic_memory.vector:
-                logger.warning(f"语义记忆 {semantic_memory.id} 没有 embedding，跳过同步")
+            if not foresight.vector:
+                logger.warning(f"前瞻 {foresight.id} 没有 embedding，跳过同步")
                 return stats
             
             # 同步到 Milvus
             if sync_to_milvus:
                 # 使用转换器生成 Milvus 实体
-                milvus_entity = SemanticMemoryMilvusConverter.from_mongo(semantic_memory)
-                await self.semantic_milvus_repo.insert(milvus_entity, flush=False)
-                stats["semantic_memory"] += 1
-                logger.debug(f"已同步语义记忆到 Milvus: {semantic_memory.id}")
+                milvus_entity = ForesightMilvusConverter.from_mongo(foresight)
+                await self.foresight_milvus_repo.insert(milvus_entity, flush=False)
+                stats["foresight"] += 1
+                logger.debug(f"已同步前瞻到 Milvus: {foresight.id}")
             
             # 同步到 ES
             if sync_to_es:
                 # 使用转换器生成正确的 ES 文档(包括 jieba 分词的 search_content)
-                es_doc = SemanticMemoryConverter.from_mongo(semantic_memory)
-                await self.semantic_es_repo.create(es_doc)
+                es_doc = ForesightConverter.from_mongo(foresight)
+                await self.foresight_es_repo.create(es_doc)
                 stats["es_records"] += 1
-                logger.debug(f"已同步语义记忆到 ES: {semantic_memory.id}")
+                logger.debug(f"已同步前瞻到 ES: {foresight.id}")
             
         except Exception as e:
-            logger.error(f"同步语义记忆失败: {e}", exc_info=True)
+            logger.error(f"同步前瞻失败: {e}", exc_info=True)
             raise
         
         return stats
@@ -186,39 +186,39 @@ class MemorySyncService:
         
         return stats
 
-    async def sync_batch_semantic_memories(
+    async def sync_batch_foresights(
         self,
-        semantic_memories: List[SemanticMemoryRecord],
+        foresights: List[ForesightRecord],
         sync_to_es: bool = True,
         sync_to_milvus: bool = True
     ) -> Dict[str, int]:
-        """批量同步语义记忆
+        """批量同步前瞻
         
         Args:
-            semantic_memories: SemanticMemoryRecord 列表
+            foresights: ForesightRecord 列表
             sync_to_es: 是否同步到 ES（默认 True）
             sync_to_milvus: 是否同步到 Milvus（默认 True）
             
         Returns:
             同步统计信息
         """
-        total_stats = {"semantic_memory": 0, "es_records": 0}
+        total_stats = {"foresight": 0, "es_records": 0}
         
-        for sem_mem in semantic_memories:
+        for foresight_mem in foresights:
             try:
-                stats = await self.sync_semantic_memory(
-                    sem_mem, 
-                    sync_to_es=sync_to_es,
+                stats = await self.sync_foresight(
+                    foresight_mem, 
+                    sync_to_es=sync_to_es, 
                     sync_to_milvus=sync_to_milvus
                 )
-                total_stats["semantic_memory"] += stats.get("semantic_memory", 0)
+                total_stats["foresight"] += stats.get("foresight", 0)
                 total_stats["es_records"] += stats.get("es_records", 0)
             except Exception as e:
-                logger.error(f"批量同步语义记忆失败: {sem_mem.id}, 错误: {e}", exc_info=True)
+                logger.error(f"批量同步前瞻失败: {foresight_mem.id}, 错误: {e}", exc_info=True)
                 # 不要静默吞掉异常
         
         
-        logger.info(f"✅ 语义记忆 Milvus flush 完成: {total_stats['semantic_memory']} 条")
+        logger.info(f"✅ 前瞻 Milvus flush 完成: {total_stats['foresight']} 条")
         
         return total_stats
 

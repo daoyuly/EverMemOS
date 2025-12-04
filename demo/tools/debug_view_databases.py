@@ -209,7 +209,7 @@ def check_milvus(detail: bool = False):
                 # 我们暂时仅保留计数功能，或者仅对已知集合查样例
                 known_pk_map = {
                     'episodic_memory_memsys': 'id',
-                    'semantic_memory_memsys': 'id',
+                    'foresight_memsys': 'id',
                     'event_log_memsys': 'id',
                 }
 
@@ -224,7 +224,7 @@ def check_milvus(detail: bool = False):
                                 "episode",
                                 "atomic_fact",
                                 "content",
-                                "semantic",
+                                "foresight",
                             ],
                             limit=2,
                         )

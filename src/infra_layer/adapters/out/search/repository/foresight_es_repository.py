@@ -1,8 +1,8 @@
 """
-语义记忆 Elasticsearch 仓库
+前瞻 Elasticsearch 仓库
 
-基于 BaseRepository 的语义记忆专用仓库类，提供高效的BM25文本检索和复杂查询功能。
-复用 EpisodicMemoryDoc，通过 type 字段过滤为 semantic_memory。
+基于 BaseRepository 的前瞻专用仓库类，提供高效的BM25文本检索和复杂查询功能。
+复用 EpisodicMemoryDoc，通过 type 字段过滤为 foresight。
 """
 
 from datetime import datetime
@@ -10,8 +10,8 @@ import pprint
 from typing import List, Optional, Dict, Any
 from elasticsearch.dsl import Q
 from core.oxm.es.base_repository import BaseRepository
-from infra_layer.adapters.out.search.elasticsearch.memory.semantic_memory import (
-    SemanticMemoryDoc,
+from infra_layer.adapters.out.search.elasticsearch.memory.foresight import (
+    ForesightDoc,
 )
 from core.observation.logger import get_logger
 from common_utils.datetime_utils import get_now_with_timezone
@@ -21,10 +21,10 @@ from core.di.decorators import repository
 logger = get_logger(__name__)
 
 
-@repository("semantic_memory_es_repository", primary=True)
-class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
+@repository("foresight_es_repository", primary=True)
+class ForesightEsRepository(BaseRepository[ForesightDoc]):
     """
-    语义记忆 Elasticsearch 仓库
+    前瞻 Elasticsearch 仓库
 
     基于 BaseRepository 的专用仓库类，提供：
     - 高效的BM25文本检索
@@ -32,12 +32,12 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
     - 文档创建和管理
     - 手动索引刷新控制
     
-    注意：复用 EpisodicMemoryDoc，通过 type 字段过滤为 semantic_memory。
+    注意：复用 EpisodicMemoryDoc，通过 type 字段过滤为 foresight。
     """
 
     def __init__(self):
-        """初始化语义记忆仓库"""
-        super().__init__(SemanticMemoryDoc)
+        """初始化前瞻仓库"""
+        super().__init__(ForesightDoc)
         # 初始化智能文本解析器，用于计算查询词的智能长度
         self._text_parser = SmartTextParser()
 
@@ -77,7 +77,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
 
     # ==================== 文档创建和管理 ====================
 
-    async def create_and_save_semantic_memory(
+    async def create_and_save_foresight(
         self,
         id: str,
         user_id: str,
@@ -96,15 +96,15 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
         extend: Optional[Dict[str, Any]] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
-    ) -> SemanticMemoryDoc:
+    ) -> ForesightDoc:
         """
-        创建并保存语义记忆文档
+        创建并保存前瞻文档
 
         Args:
             id: 记忆唯一标识
             user_id: 用户ID（必需）
             timestamp: 事件发生时间（必需）
-            content: 语义记忆内容（必需）
+            content: 前瞻内容（必需）
             search_content: 搜索内容列表（支持多个搜索词，必需）
             parent_episode_id: 父情景记忆ID
             group_id: 群组ID
@@ -118,7 +118,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             updated_at: 更新时间
 
         Returns:
-            已保存的SemanticMemoryDoc实例
+            已保存的ForesightDoc实例
         """
         try:
             # 设置默认时间戳
@@ -128,9 +128,9 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             if updated_at is None:
                 updated_at = now
 
-            # 构建 extend 字段，包含语义记忆特有信息
-            semantic_extend = extend or {}
-            semantic_extend.update({
+            # 构建 extend 字段，包含前瞻特有信息
+            foresight_extend = extend or {}
+            foresight_extend.update({
                 "parent_episode_id": parent_episode_id,
                 "start_time": start_time.isoformat() if start_time else None,
                 "end_time": end_time.isoformat() if end_time else None,
@@ -139,13 +139,13 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             })
 
             # 创建文档实例
-            doc = SemanticMemoryDoc(
+            doc = ForesightDoc(
                 id=id,
                 type=event_type,
                 user_id=user_id,
                 user_name=user_name or '',
                 timestamp=timestamp,
-                semantic=content,
+                foresight=content,
                 search_content=search_content,
                 evidence=evidence or '',
                 group_id=group_id,
@@ -153,7 +153,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
                 keywords=[],
                 subject='',
                 memcell_event_id_list=[],
-                extend=semantic_extend,
+                extend=foresight_extend,
                 created_at=created_at,
                 updated_at=updated_at,
             )
@@ -163,12 +163,12 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             await doc.save(using=client)
 
             logger.debug(
-                "✅ 创建语义记忆文档成功: id=%s, user_id=%s", id, user_id
+                "✅ 创建前瞻文档成功: id=%s, user_id=%s", id, user_id
             )
             return doc
 
         except Exception as e:
-            logger.error("❌ 创建语义记忆文档失败: id=%s, error=%s", id, e)
+            logger.error("❌ 创建前瞻文档失败: id=%s, error=%s", id, e)
             raise
 
     # ==================== 搜索功能 ====================
@@ -190,7 +190,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
         使用 elasticsearch-dsl 的统一搜索接口，支持多词查询和全面过滤
 
         使用function_score查询实现基于匹配词数的累积评分。
-        自动过滤 type="semantic_memory" 的文档。
+        自动过滤 type="foresight" 的文档。
 
         Args:
             query: 搜索词列表，支持多个搜索词
@@ -209,7 +209,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
         """
         try:
             # 创建 AsyncSearch 对象
-            search = SemanticMemoryDoc.search()
+            search = ForesightDoc.search()
 
             # 构建过滤条件
             filter_queries = []
@@ -277,7 +277,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             # 设置分页参数
             search = search[from_ : from_ + size]
 
-            logger.debug("semantic memory search query: %s", search.to_dict())
+            logger.debug("foresight search query: %s", search.to_dict())
 
             # 执行搜索
             if explain and query:
@@ -301,7 +301,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
                         self._log_explanation_details(explanation, indent=2)
 
                 logger.debug(
-                    "✅ 语义记忆DSL多词搜索成功(explain模式): query=%s, user_id=%s, 找到 %d 条结果",
+                    "✅ 前瞻DSL多词搜索成功(explain模式): query=%s, user_id=%s, 找到 %d 条结果",
                     search.to_dict(),
                     user_id,
                     len(hits),
@@ -348,7 +348,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
                 hits = filtered_hits
 
                 logger.debug(
-                    "✅ 语义记忆DSL多词搜索成功: query=%s, user_id=%s, 找到 %d 条结果",
+                    "✅ 前瞻DSL多词搜索成功: query=%s, user_id=%s, 找到 %d 条结果",
                     search.to_dict(),
                     user_id,
                     len(hits),
@@ -359,7 +359,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
 
         except (ConnectionError, TimeoutError, ValueError) as e:
             logger.error(
-                "❌ 语义记忆DSL多词搜索失败: query=%s, user_id=%s, error=%s",
+                "❌ 前瞻DSL多词搜索失败: query=%s, user_id=%s, error=%s",
                 query,
                 user_id,
                 e,
@@ -367,7 +367,7 @@ class SemanticMemoryEsRepository(BaseRepository[SemanticMemoryDoc]):
             raise
         except Exception as e:
             logger.error(
-                "❌ 语义记忆DSL多词搜索失败（未知错误）: query=%s, user_id=%s, error=%s",
+                "❌ 前瞻DSL多词搜索失败（未知错误）: query=%s, user_id=%s, error=%s",
                 query,
                 user_id,
                 e,

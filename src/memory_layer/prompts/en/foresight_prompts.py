@@ -1,11 +1,11 @@
 """
-Semantic Memory Association Prediction Prompt Templates
+Foresight Association Prediction Prompt Templates
 
-Used to generate semantic memory association predictions based on MemCell and EpisodeMemory content
+Used to generate foresight association predictions based on MemCell and EpisodeMemory content
 """
 
-GROUP_SEMANTIC_GENERATION_PROMPT = """
-You are an advanced semantic analysis agent. Your task is to predict potential subsequent group behaviors, atmosphere changes, and member interaction trends based on recent MemCell events in a group.
+GROUP_FORESIGHT_GENERATION_PROMPT = """
+You are an advanced foresight analysis agent. Your task is to predict potential subsequent group behaviors, atmosphere changes, and member interaction trends based on recent MemCell events in a group.
 
 ## Task Objectives:
 1. **Associative Prediction, Not Summary**: Based on event content, predict potential subsequent group changes rather than repeating or summarizing the original content.
@@ -18,10 +18,11 @@ You are an advanced semantic analysis agent. Your task is to predict potential s
 6. **Member Relationship-Oriented**: Allow referencing specific member IDs (e.g., user_1, user_2), but focus on describing "group relationship changes" or "overall atmosphere trends."
 
 ## Output Format:
-Return results as a JSON array, each association includes time information:
+Return results as a JSON array, each association includes time information and evidence:
 [
   {
     "content": "Team communication frequency will increase in the next week",
+    "evidence": "During the meeting, user_1 emphasized communication efficiency issues",
     "start_time": "2025-01-15",
     "end_time": "2025-01-22",
     "duration_days": 7,
@@ -43,6 +44,7 @@ Return results as a JSON array, each association includes time information:
 [
   {
     "content": "user_2 will lead the next phase goal planning",
+    "evidence": "user_2 proposed new goal directions",
     "start_time": "2025-01-15",
     "end_time": "2025-01-31",
     "duration_days": 16,
@@ -50,6 +52,7 @@ Return results as a JSON array, each association includes time information:
   },
   {
     "content": "Team will reassign workload internally",
+    "evidence": "user_3 expressed workload pressure",
     "start_time": "2025-01-15",
     "end_time": "2025-01-22",
     "duration_days": 7,
@@ -71,6 +74,7 @@ Return results as a JSON array, each association includes time information:
 [
   {
     "content": "user_2 will frequently check on user_1's recovery in the next few days",
+    "evidence": "user_2 immediately came to help and supported them home",
     "start_time": "2025-10-23",
     "end_time": "2025-10-30",
     "duration_days": 7,
@@ -78,6 +82,7 @@ Return results as a JSON array, each association includes time information:
   },
   {
     "content": "user_1 will reduce outdoor activities in the near term",
+    "evidence": "user_1 sprained their ankle while walking in the park",
     "start_time": "2025-10-23",
     "end_time": "2025-10-30",
     "duration_days": 7,
@@ -87,20 +92,22 @@ Return results as a JSON array, each association includes time information:
 ]
 
 ## Important Notes:
-- **Association-Oriented**: Focus on "group-level semantic associations," predicting potential subsequent group changes based on events, not summarizing individual daily behaviors.
+- **Association-Oriented**: Focus on "group-level foresight associations," predicting potential subsequent group changes based on events, not summarizing individual daily behaviors.
 - **Scenario Adaptation**: Language style must match the event scenario - use casual expressions for life scenarios, professional expressions for work scenarios.
 - **Time Inference**: Reasonably infer time ranges based on event type, common sense, and user status - don't rigidly apply fixed times.
 - **Content Innovation**: Don't repeat original content; generate new group behaviors or atmosphere changes that the event might trigger.
+- **Semantic Retrieval Friendly**: content should be the prediction result (e.g., "will increase communication frequency"), evidence stores the original fact (e.g., "communication issues mentioned in meeting"), enabling AI to retrieve relevant foresights based on user queries and trace back reasons.
 - **Time Information Extraction Rules:**
   - start_time: Extract the specific date when the event occurred from the MemCell's timestamp field, format: YYYY-MM-DD
   - end_time: Extract the specific end time from the original content. If there's an explicit end time (e.g., "before October 24", "2025-11-15"), extract the specific date; otherwise, reasonably infer based on event content and common sense
   - duration_days: Extract duration from the original content. If there's explicit time description (e.g., "within a week", "7 days", "one month"), extract days; otherwise, reasonably infer based on event content and common sense
   - source_episode_id: Use the event_id from the input
+  - evidence: Extract specific evidence from the original content that supports this prediction, must be facts or behaviors explicitly mentioned in the original text, no more than 30 words
   - **Important**: Prioritize extracting explicit time information from the original text; if not available, make reasonable inferences based on event content and common sense. Time cannot be null
 """
 
-SEMANTIC_GENERATION_PROMPT = """
-You are an advanced personal semantic analysis agent. Your task is to predict the specific impacts that a user's latest MemCell event might have on their future personal behaviors, habits, decisions, and lifestyle.
+FORESIGHT_GENERATION_PROMPT = """
+You are an advanced personal foresight analysis agent. Your task is to predict the specific impacts that a user's latest MemCell event might have on their future personal behaviors, habits, decisions, and lifestyle.
 
 ## Task Objectives:
 1. **Personal-Level Association**: Analyze the event's potential impact on the user's future behavior, thinking patterns, life habits, or decision preferences from the personal perspective.
@@ -114,10 +121,11 @@ You are an advanced personal semantic analysis agent. Your task is to predict th
 7. **Direct User ID Usage**: Output should directly use user IDs (e.g., user_1), avoid using generic terms like "the user."
 
 ## Output Format:
-Return results as a JSON array, each association includes time information:
+Return results as a JSON array, each association includes time information and evidence:
 [
   {
     "content": "user_1 should pay more attention to emotional management recently",
+    "evidence": "user_1 just completed wisdom tooth extraction surgery, may have discomfort",
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
@@ -139,6 +147,7 @@ Return results as a JSON array, each association includes time information:
 [
   {
     "content": "XiaoMing will adjust dietary habits for the next week",
+    "evidence": "doctor emphasized attention to diet and hygiene for the next week",
     "start_time": "2025-10-21",
     "end_time": "2025-10-28",
     "duration_days": 7,
@@ -146,6 +155,7 @@ Return results as a JSON array, each association includes time information:
   },
   {
     "content": "XiaoMing will develop a habit of regular dental check-ups",
+    "evidence": "the doctor reminded to maintain oral hygiene and regular follow-ups",
     "start_time": "2025-10-21",
     "end_time": "2025-11-21",
     "duration_days": 31,
@@ -167,6 +177,7 @@ Return results as a JSON array, each association includes time information:
 [
   {
     "content": "LiHua will apply new project management methods in the future",
+    "evidence": "LiHua learned agile development methods during training",
     "start_time": "2025-10-24",
     "end_time": "2025-11-24",
     "duration_days": 31,
@@ -174,6 +185,7 @@ Return results as a JSON array, each association includes time information:
   },
   {
     "content": "LiHua will pay attention to more career development opportunities",
+    "evidence": "LiHua attended company-organized project management training",
     "start_time": "2025-10-24",
     "end_time": "2025-12-24",
     "duration_days": 61,
@@ -187,21 +199,23 @@ Return results as a JSON array, each association includes time information:
 - **Associative Innovation**: Don't repeat original content; generate personal behavioral, habitual, or decision-making changes that the event might trigger.
 - **Scenario Adaptation**: Language style must match the event scenario - use casual expressions for life scenarios, professional expressions for work scenarios.
 - **Time Inference**: Reasonably infer time ranges based on event type, personal status, and common sense - don't rigidly apply fixed times.
-- **Content Practicality**: Content must be specific, reasonable, practical, and usable by the system for personal semantic memory modeling.
+- **Content Practicality**: Content must be specific, reasonable, practical, and usable by the system for personal foresight modeling.
+- **Semantic Retrieval Friendly**: content should be the prediction result (e.g., "will choose soft food"), evidence stores the original fact (e.g., "wisdom tooth extraction"), enabling AI to retrieve relevant foresights based on user queries (e.g., "recommend food") and trace back reasons.
 - **Time Information Extraction Rules:**
   - start_time: Extract the specific date when the event occurred from the MemCell's timestamp field, format: YYYY-MM-DD
   - end_time: Extract the specific end time from the original content. If there's an explicit end time (e.g., "before October 24", "2025-11-15"), extract the specific date; otherwise, reasonably infer based on event content and common sense
   - duration_days: Extract duration from the original content. If there's explicit time description (e.g., "within a week", "7 days", "one month"), extract days; otherwise, reasonably infer based on event content and common sense
   - source_episode_id: Use the event_id from the input
+  - evidence: Extract specific evidence from the input content that supports this prediction, must be facts or behaviors explicitly mentioned in the original text, no more than 30 words
   - **Important**: Prioritize extracting explicit time information from the original text; if not available, make reasonable inferences based on event content and common sense. Time cannot be null
 """
 
 
-def get_group_semantic_generation_prompt(
+def get_group_foresight_generation_prompt(
     memcell_summary: str, memcell_episode: str, user_ids: list = None
 ) -> str:
     """
-    Generate prompt for group semantic memory association prediction
+    Generate prompt for group foresight association prediction
 
     Args:
         memcell_summary: MemCell summary content
@@ -216,7 +230,7 @@ def get_group_semantic_generation_prompt(
     if user_ids:
         user_ids_info = f"\n**User ID Information:**\n{', '.join(user_ids)}\n"
 
-    prompt = f"""{GROUP_SEMANTIC_GENERATION_PROMPT}
+    prompt = f"""{GROUP_FORESIGHT_GENERATION_PROMPT}
 
 ## Input Content:
 
@@ -231,11 +245,11 @@ def get_group_semantic_generation_prompt(
     return prompt
 
 
-def get_semantic_generation_prompt(
+def get_foresight_generation_prompt(
     episode_memory: str, episode_content: str, user_id: str = None
 ) -> str:
     """
-    Generate prompt for personal semantic memory association prediction
+    Generate prompt for personal foresight association prediction
 
     Args:
         episode_memory: EpisodeMemory summary content
@@ -250,7 +264,7 @@ def get_semantic_generation_prompt(
     if user_id:
         user_id_info = f"\n**User ID Information:**\n{user_id}\n"
 
-    prompt = f"""{SEMANTIC_GENERATION_PROMPT}
+    prompt = f"""{FORESIGHT_GENERATION_PROMPT}
 
 ## Input Content:
 

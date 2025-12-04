@@ -11,12 +11,12 @@ from api_specs.memory_models import (
     ProfileModel,
     PreferenceModel,
     EpisodicMemoryModel,
-    SemanticMemoryModel,
+    ForesightModel,
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,
     EventLogModel,
-    SemanticMemoryRecordModel,
+    ForesightRecordModel,
 )
 
 
@@ -79,15 +79,15 @@ class TestFakeFetchMemoryService:
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
-    async def test_find_by_user_id_semantic_memory(self, service):
-        """测试查找语义记忆"""
+    async def test_find_by_user_id_foresight(self, service):
+        """测试查找前瞻"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.SEMANTIC_MEMORY, limit=5
+            "user_001", MemoryType.FORESIGHT, limit=5
         )
 
         assert response.total_count > 0
         assert all(
-            isinstance(memory, SemanticMemoryModel) for memory in response.memories
+            isinstance(memory, ForesightModel) for memory in response.memories
         )
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
@@ -128,7 +128,7 @@ class TestFakeFetchMemoryService:
     async def test_find_by_user_id_personal_event_log(self, service):
         """测试查找个人事件日志"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.PERSONAL_EVENT_LOG, limit=5
+            "user_001", MemoryType.EVENT_LOG, limit=5
         )
 
         assert response.total_count > 0
@@ -136,18 +136,18 @@ class TestFakeFetchMemoryService:
         assert all(memory.user_id == "user_001" for memory in response.memories)
 
     @pytest.mark.asyncio
-    async def test_find_by_user_id_personal_semantic_memory(self, service):
-        """测试查找个人语义记忆"""
+    async def test_find_by_user_id_personal_foresight(self, service):
+        """测试查找个人前瞻"""
         response = await service.find_by_user_id(
-            "user_001", MemoryType.PERSONAL_SEMANTIC_MEMORY, limit=5
+            "user_001", MemoryType.FORESIGHT, limit=5
         )
 
         assert response.total_count > 0
         assert all(
-            isinstance(memory, SemanticMemoryRecordModel)
+            isinstance(memory, ForesightRecordModel)
             for memory in response.memories
         )
-        # 个人语义记忆的user_id可能为None（群组场景），所以不强制检查
+        # 个人前瞻的 user_id 可能为 None（群组场景），所以不强制检查
 
     @pytest.mark.asyncio
     async def test_find_by_user_id_nonexistent_user(self, service):
@@ -205,6 +205,43 @@ class TestGetFetchMemoryService:
         assert len(response.memories) <= 3
         assert all(isinstance(memory, BaseMemoryModel) for memory in response.memories)
         assert all(memory.user_id == "user_001" for memory in response.memories)
+
+
+class TestMemoryTypes:
+    """测试所有记忆类型"""
+
+    @pytest.fixture
+    def service(self):
+        return get_fetch_memory_service()
+
+    @pytest.mark.asyncio
+    async def test_all_memory_types_available(self, service):
+        """测试所有记忆类型都有数据"""
+        user_id = "user_001"
+
+        for memory_type in MemoryType:
+            response = await service.find_by_user_id(user_id, memory_type, limit=5)
+            assert (
+                response.total_count >= 0
+            ), f"Memory type {memory_type} should have data or empty result"
+
+            # 验证返回的记忆类型正确
+            if response.memories:
+                memory = response.memories[0]
+                expected_types = {
+                    MemoryType.BASE_MEMORY: BaseMemoryModel,
+                    MemoryType.PROFILE: ProfileModel,
+                    MemoryType.PREFERENCE: PreferenceModel,
+                    MemoryType.EPISODIC_MEMORY: EpisodicMemoryModel,
+                    MemoryType.FORESIGHT: ForesightModel,
+                    MemoryType.ENTITY: EntityModel,
+                    MemoryType.RELATION: RelationModel,
+                    MemoryType.BEHAVIOR_HISTORY: BehaviorHistoryModel,
+                }
+                expected_type = expected_types[memory_type]
+                assert isinstance(
+                    memory, expected_type
+                ), f"Expected {expected_type}, got {type(memory)}"
 
 
 if __name__ == "__main__":

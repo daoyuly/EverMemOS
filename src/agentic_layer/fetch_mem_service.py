@@ -13,12 +13,9 @@ from typing import Optional, Tuple, Union
 
 
 from core.di import get_bean_by_type, get_bean, service
-from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record import (
-    SemanticMemoryRecord,
-    SemanticMemoryRecordProjection,
-)
-from infra_layer.adapters.out.persistence.repository.semantic_memory_raw_repository import (
-    SemanticMemoryRawRepository,
+from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
+    ForesightRecord,
+    ForesightRecordProjection,
 )
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
     EpisodicMemoryRawRepository,
@@ -45,8 +42,11 @@ from infra_layer.adapters.out.persistence.document.memory.event_log_record impor
     EventLogRecord,
     EventLogRecordProjection,
 )
-from infra_layer.adapters.out.persistence.repository.semantic_memory_record_raw_repository import (
-    SemanticMemoryRecordRawRepository,
+from infra_layer.adapters.out.persistence.repository.foresight_record_repository import (
+    ForesightRecordRawRepository,
+)
+from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
+    ForesightRecordProjection,
 )
 
 from api_specs.dtos.memory_query import FetchMemResponse
@@ -58,13 +58,13 @@ from api_specs.memory_models import (
     ProfileModel,
     PreferenceModel,
     EpisodicMemoryModel,
-    SemanticMemoryModel,
+    ForesightModel,
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,
     CoreMemoryModel,
     EventLogModel,
-    SemanticMemoryRecordModel,
+    ForesightRecordModel,
     Metadata,
 )
 
@@ -166,7 +166,6 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
 
     def __init__(self):
         """初始化服务"""
-        self._semantic_repo = None
         self._episodic_repo = None
         self._core_repo = None
         self._entity_repo = None
@@ -174,13 +173,11 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
         self._behavior_repo = None
         self._conversation_meta_repo = None
         self._event_log_repo = None
-        self._semantic_memory_record_repo = None
+        self._foresight_record_repo = None
         logger.info("FetchMemoryServiceImpl initialized")
 
     def _get_repositories(self):
         """获取 Repository 实例"""
-        if self._semantic_repo is None:
-            self._semantic_repo = get_bean_by_type(SemanticMemoryRawRepository)
         if self._episodic_repo is None:
             self._episodic_repo = get_bean_by_type(EpisodicMemoryRawRepository)
         if self._core_repo is None:
@@ -197,9 +194,9 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             )
         if self._event_log_repo is None:
             self._event_log_repo = get_bean_by_type(EventLogRecordRawRepository)
-        if self._semantic_memory_record_repo is None:
-            self._semantic_memory_record_repo = get_bean_by_type(
-                SemanticMemoryRecordRawRepository
+        if self._foresight_record_repo is None:
+            self._foresight_record_repo = get_bean_by_type(
+                ForesightRecordRawRepository
             )
 
     async def _get_employee_metadata(
@@ -322,25 +319,25 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=metadata,
         )
 
-    async def _convert_semantic_memory(self, semantic_memory) -> SemanticMemoryModel:
-        """转换语义记忆文档为模型"""
+    async def _convert_foresight(self, foresight) -> ForesightModel:
+        """转换前瞻文档为模型"""
         metadata = await self._get_employee_metadata(
-            user_id=semantic_memory.user_id,
+            user_id=foresight.user_id,
             source="user_input",
-            memory_type=MemoryType.SEMANTIC_MEMORY.value,
+            memory_type="foresight",
         )
 
-        return SemanticMemoryModel(
-            id=str(semantic_memory.id),
-            user_id=semantic_memory.user_id,
-            concept=semantic_memory.subject,
-            definition=semantic_memory.description,
-            category="语义记忆",
+        return ForesightModel(
+            id=str(foresight.id),
+            user_id=foresight.user_id,
+            concept=foresight.subject,
+            definition=foresight.description,
+            category="前瞻",
             related_concepts=[],
             confidence_score=1.0,
             source="用户输入",
-            created_at=semantic_memory.created_at,
-            updated_at=semantic_memory.updated_at,
+            created_at=foresight.created_at,
+            updated_at=foresight.updated_at,
             metadata=metadata,
         )
 
@@ -464,43 +461,43 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             metadata=Metadata(
                 source="event_log",
                 user_id=event_log.user_id,
-                memory_type=MemoryType.PERSONAL_EVENT_LOG.value,
+                memory_type=MemoryType.EVENT_LOG.value,
             ),
         )
 
-    def _convert_semantic_memory_record(
+    def _convert_foresight_record(
         self,
-        semantic_record: Union[SemanticMemoryRecord, SemanticMemoryRecordProjection],
-    ) -> SemanticMemoryRecordModel:
-        """转换语义记忆记录文档为模型
+        foresight_record: Union[ForesightRecord, ForesightRecordProjection],
+    ) -> ForesightRecordModel:
+        """转换前瞻记录文档为模型
 
-        支持 SemanticMemoryRecord 和 SemanticMemoryRecordShort 类型。
-        SemanticMemoryRecordShort 不包含 vector 字段。
+        支持 ForesightRecord 和 ForesightRecordProjection 类型。
+        ForesightRecordProjection 不包含 vector 字段。
         """
-        return SemanticMemoryRecordModel(
-            id=str(semantic_record.id),
-            content=semantic_record.content,
-            parent_episode_id=semantic_record.parent_episode_id,
-            user_id=semantic_record.user_id,
-            user_name=semantic_record.user_name,
-            group_id=semantic_record.group_id,
-            group_name=semantic_record.group_name,
-            start_time=semantic_record.start_time,
-            end_time=semantic_record.end_time,
-            duration_days=semantic_record.duration_days,
-            participants=semantic_record.participants,
+        return ForesightRecordModel(
+            id=str(foresight_record.id),
+            content=foresight_record.content,
+            parent_episode_id=foresight_record.parent_episode_id,
+            user_id=foresight_record.user_id,
+            user_name=foresight_record.user_name,
+            group_id=foresight_record.group_id,
+            group_name=foresight_record.group_name,
+            start_time=foresight_record.start_time,
+            end_time=foresight_record.end_time,
+            duration_days=foresight_record.duration_days,
+            participants=foresight_record.participants,
             vector=getattr(
-                semantic_record, 'vector', None
-            ),  # SemanticMemoryRecordShort 没有 vector 字段
-            vector_model=semantic_record.vector_model,
-            evidence=semantic_record.evidence,
-            extend=semantic_record.extend,
-            created_at=semantic_record.created_at,
-            updated_at=semantic_record.updated_at,
+                foresight_record, 'vector', None
+            ),  # ForesightRecordProjection 没有 vector 字段
+            vector_model=foresight_record.vector_model,
+            evidence=foresight_record.evidence,
+            extend=foresight_record.extend,
+            created_at=foresight_record.created_at,
+            updated_at=foresight_record.updated_at,
             metadata=Metadata(
-                source="semantic_memory_record",
-                user_id=semantic_record.user_id or "",
-                memory_type=MemoryType.PERSONAL_SEMANTIC_MEMORY.value,
+                source="foresight_record",
+                user_id=foresight_record.user_id or "",
+                memory_type=MemoryType.FORESIGHT.value,
             ),
         )
 
@@ -552,12 +549,12 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                             ]
                     else:
                         memories = []
-                case MemoryType.SEMANTIC_MEMORY:
-                    # 语义记忆：每个用户只有一个语义记忆文档
-                    semantic_memory = await self._semantic_repo.get_by_user_id(user_id)
-                    if semantic_memory:
+                case MemoryType.FORESIGHT:
+                    # 前瞻：每个用户只有一个前瞻文档
+                    foresight = await self._foresight_record_repo.get_by_user_id(user_id)
+                    if foresight:
                         memories = [
-                            await self._convert_semantic_memory(semantic_memory)
+                            await self._convert_foresight(foresight)
                         ]
                     else:
                         memories = []
@@ -676,7 +673,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                         for behavior in behaviors
                     ]
 
-                case MemoryType.PERSONAL_EVENT_LOG:
+                case MemoryType.EVENT_LOG:
                     # 事件日志：原子事实列表
                     event_logs = await self._event_log_repo.get_by_user_id(
                         user_id, limit=limit, model=EventLogRecordProjection
@@ -685,16 +682,16 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                         self._convert_event_log(event_log) for event_log in event_logs
                     ]
 
-                case MemoryType.PERSONAL_SEMANTIC_MEMORY:
-                    # 个人语义记忆：从情景记忆中提取的语义信息
-                    semantic_records = (
-                        await self._semantic_memory_record_repo.get_by_user_id(
-                            user_id, model=SemanticMemoryRecordProjection, limit=limit
+                case MemoryType.FORESIGHT:
+                    # 个人前瞻：从情景记忆中提取的前瞻信息
+                    foresight_records = (
+                        await self._foresight_record_repo.get_by_user_id(
+                            user_id, model=ForesightRecordProjection, limit=limit
                         )
                     )
                     memories = [
-                        self._convert_semantic_memory_record(record)
-                        for record in semantic_records
+                        self._convert_foresight_record(record)
+                        for record in foresight_records
                     ]
 
             # 创建包含员工信息的metadata
@@ -754,13 +751,13 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
             self._get_repositories()
 
             match memory_type:
-                case MemoryType.SEMANTIC_MEMORY:
-                    # 语义记忆通过用户ID查询
-                    semantic_memory = await self._semantic_repo.get_by_user_id(
+                case MemoryType.FORESIGHT:
+                    # 前瞻通过用户ID查询
+                    foresight = await self._foresight_record_repo.get_by_user_id(
                         memory_id
                     )
-                    if semantic_memory:
-                        return self._convert_semantic_memory(semantic_memory)
+                    if foresight:
+                        return self._convert_foresight(foresight)
 
                 case MemoryType.EPISODIC_MEMORY:
                     # 情景记忆通过事件ID查询，需要用户ID
@@ -790,7 +787,7 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                     if behaviors:
                         return self._convert_behavior_history(behaviors[0])
 
-                case MemoryType.PERSONAL_EVENT_LOG:
+                case MemoryType.EVENT_LOG:
                     # 事件日志通过ID查询（使用简化版本减少数据传输）
                     event_log = await self._event_log_repo.get_by_id(
                         memory_id, model=EventLogRecordProjection
@@ -798,13 +795,13 @@ class FetchMemoryServiceImpl(FetchMemoryServiceInterface):
                     if event_log:
                         return self._convert_event_log(event_log)
 
-                case MemoryType.PERSONAL_SEMANTIC_MEMORY:
-                    # 个人语义记忆通过ID查询
-                    semantic_record = await self._semantic_memory_record_repo.get_by_id(
+                case MemoryType.FORESIGHT:
+                    # 个人前瞻通过ID查询
+                    foresight_record = await self._foresight_record_repo.get_by_id(
                         memory_id
                     )
-                    if semantic_record:
-                        return self._convert_semantic_memory_record(semantic_record)
+                    if foresight_record:
+                        return self._convert_foresight_record(foresight_record)
 
             return None
 

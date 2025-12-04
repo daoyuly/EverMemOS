@@ -1,7 +1,7 @@
 """
-语义记忆 Milvus 转换器
+前瞻 Milvus 转换器
 
-负责将 MongoDB 的语义记忆文档转换为 Milvus Collection 实体，支持个人与群组。
+负责将 MongoDB 的前瞻文档转换为 Milvus Collection 实体，支持个人与群组。
 """
 
 from typing import Dict, Any
@@ -10,22 +10,22 @@ from datetime import datetime
 
 from core.oxm.milvus.base_converter import BaseMilvusConverter
 from core.observation.logger import get_logger
-from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import (
-    SemanticMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.foresight_collection import (
+    ForesightCollection,
 )
-from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record import (
-    SemanticMemoryRecord as MongoSemanticMemoryRecord,
+from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
+    ForesightRecord as MongoForesightRecord,
 )
 
 logger = get_logger(__name__)
 
 
-class SemanticMemoryMilvusConverter(BaseMilvusConverter[SemanticMemoryCollection]):
+class ForesightMilvusConverter(BaseMilvusConverter[ForesightCollection]):
     """
-    语义记忆 Milvus 转换器
+    前瞻 Milvus 转换器
     
-    将 MongoDB 的语义记忆文档转换为 Milvus Collection 实体。
-    使用独立的 SemanticMemoryCollection，支持个人和群组语义记忆。
+    将 MongoDB 的前瞻文档转换为 Milvus Collection 实体。
+    使用独立的 ForesightCollection，支持个人和群组前瞻。
     """
 
     @classmethod
@@ -48,12 +48,31 @@ class SemanticMemoryMilvusConverter(BaseMilvusConverter[SemanticMemoryCollection
         return 0
 
     @classmethod
-    def from_mongo(cls, source_doc: MongoSemanticMemoryRecord) -> Dict[str, Any]:
+    def _parse_time_field(cls, time_value, field_name: str, doc_id) -> int:
+        """解析时间字段，失败时返回 0 并记录警告"""
+        if not time_value:
+            return 0
+        
+        try:
+            if isinstance(time_value, datetime):
+                return int(time_value.timestamp())
+            elif isinstance(time_value, str):
+                dt = datetime.fromisoformat(time_value.replace('Z', '+00:00'))
+                return int(dt.timestamp())
+            elif isinstance(time_value, (int, float)):
+                return int(time_value)
+        except Exception as e:
+            logger.warning(f"解析 {field_name} 失败 (doc_id={doc_id}): {time_value}, 错误: {e}")
+        
+        return 0
+
+    @classmethod
+    def from_mongo(cls, source_doc: MongoForesightRecord) -> Dict[str, Any]:
         """
-        从 MongoDB 语义记忆文档转换为 Milvus Collection 实体
+        从 MongoDB 前瞻文档转换为 Milvus Collection 实体
 
         Args:
-            source_doc: MongoDB 语义记忆文档实例
+            source_doc: MongoDB 前瞻文档实例
 
         Returns:
             Dict[str, Any]: Milvus 实体字典，可直接用于插入
@@ -107,11 +126,11 @@ class SemanticMemoryMilvusConverter(BaseMilvusConverter[SemanticMemoryCollection
             return milvus_entity
 
         except Exception as e:
-            logger.error("从 MongoDB 语义记忆文档转换为 Milvus 实体失败: %s", e)
+            logger.error("从 MongoDB 前瞻文档转换为 Milvus 实体失败: %s", e)
             raise
 
     @classmethod
-    def _build_detail(cls, source_doc: MongoSemanticMemoryRecord) -> Dict[str, Any]:
+    def _build_detail(cls, source_doc: MongoForesightRecord) -> Dict[str, Any]:
         """构建详细信息字典"""
         detail = {
             "vector_model": source_doc.vector_model,
@@ -122,7 +141,7 @@ class SemanticMemoryMilvusConverter(BaseMilvusConverter[SemanticMemoryCollection
         return {k: v for k, v in detail.items() if v is not None}
 
     @staticmethod
-    def _build_search_content(source_doc: MongoSemanticMemoryRecord) -> str:
+    def _build_search_content(source_doc: MongoForesightRecord) -> str:
         """构建搜索内容（JSON 列表格式）"""
         text_content = []
         

@@ -10,7 +10,7 @@ from api_specs.memory_types import (
     MemCell,
     Memory,
     RawDataType,
-    SemanticMemoryItem,
+    ForesightItem,
 )
 from memory_layer.memory_extractor.event_log_extractor import EventLog
 from memory_layer.memory_extractor.profile_memory_extractor import ProfileMemory
@@ -18,8 +18,8 @@ from core.di import get_bean_by_type
 from infra_layer.adapters.out.persistence.repository.episodic_memory_raw_repository import (
     EpisodicMemoryRawRepository,
 )
-from infra_layer.adapters.out.persistence.repository.semantic_memory_record_raw_repository import (
-    SemanticMemoryRecordRawRepository,
+from infra_layer.adapters.out.persistence.repository.foresight_record_repository import (
+    ForesightRecordRawRepository,
 )
 from infra_layer.adapters.out.persistence.repository.event_log_record_raw_repository import (
     EventLogRecordRawRepository,
@@ -69,11 +69,11 @@ from infra_layer.adapters.out.search.elasticsearch.converter.episodic_memory_con
 from infra_layer.adapters.out.search.milvus.converter.episodic_memory_milvus_converter import (
     EpisodicMemoryMilvusConverter,
 )
-from infra_layer.adapters.out.search.elasticsearch.converter.semantic_memory_converter import (
-    SemanticMemoryConverter,
+from infra_layer.adapters.out.search.elasticsearch.converter.foresight_converter import (
+    ForesightConverter,
 )
-from infra_layer.adapters.out.search.milvus.converter.semantic_memory_milvus_converter import (
-    SemanticMemoryMilvusConverter,
+from infra_layer.adapters.out.search.milvus.converter.foresight_milvus_converter import (
+    ForesightMilvusConverter,
 )
 from infra_layer.adapters.out.search.elasticsearch.converter.event_log_converter import (
     EventLogConverter,
@@ -87,8 +87,8 @@ from infra_layer.adapters.out.search.repository.episodic_memory_milvus_repositor
 from infra_layer.adapters.out.search.repository.episodic_memory_es_repository import (
     EpisodicMemoryEsRepository,
 )
-from infra_layer.adapters.out.search.repository.semantic_memory_milvus_repository import (
-    SemanticMemoryMilvusRepository,
+from infra_layer.adapters.out.search.repository.foresight_milvus_repository import (
+    ForesightMilvusRepository,
 )
 from infra_layer.adapters.out.search.repository.event_log_milvus_repository import (
     EventLogMilvusRepository,
@@ -104,13 +104,13 @@ class MemoryDocPayload:
     doc: Any
 
 
-def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
-    """将任意结构的语义记忆条目转换为 SemanticMemoryItem 实例"""
+def _clone_foresight_item(raw_item: Any) -> Optional[ForesightItem]:
+    """将任意结构的前瞻条目转换为 ForesightItem 实例"""
     if raw_item is None:
         return None
 
-    if isinstance(raw_item, SemanticMemoryItem):
-        return SemanticMemoryItem(
+    if isinstance(raw_item, ForesightItem):
+        return ForesightItem(
             content=raw_item.content,
             evidence=getattr(raw_item, "evidence", None),
             start_time=getattr(raw_item, "start_time", None),
@@ -122,7 +122,7 @@ def _clone_semantic_memory_item(raw_item: Any) -> Optional[SemanticMemoryItem]:
         )
 
     if isinstance(raw_item, dict):
-        return SemanticMemoryItem(
+        return ForesightItem(
             content=raw_item.get("content", ""),
             evidence=raw_item.get("evidence"),
             start_time=raw_item.get("start_time"),
@@ -435,7 +435,7 @@ def _convert_data_type_to_raw_data_type(data_type) -> RawDataType:
 from biz_layer.mem_db_operations import (
     _convert_timestamp_to_time,
     _convert_episode_memory_to_doc,
-    _convert_semantic_memory_to_doc,
+    _convert_foresight_to_doc,
     _convert_event_log_to_docs,
     _save_memcell_to_database,
     _save_profile_memory_to_core,
@@ -490,8 +490,8 @@ async def process_memory_extraction(
 ):
     """
     记忆提取主流程
-
-    从 MemCell 开始，提取 Episode、Semantic、EventLog 等所有记忆类型。
+    
+    从 MemCell 开始，提取 Episode、Foresight、EventLog 等所有记忆类型。
     """
     # 1. 初始化状态
     state = await _init_extraction_state(memcell, request, current_time)
@@ -638,7 +638,7 @@ async def _update_memcell_and_cluster(state: ExtractionState):
 
 
 async def _process_memories(state: ExtractionState, memory_manager: MemoryManager):
-    """保存 Episodes 并提取/保存 Semantic 和 EventLog"""
+    """保存 Episodes 并提取/保存 Foresight 和 EventLog"""
     await load_core_memories(state.request, state.participants, state.current_time)
 
     episodic_source = state.group_episode_memories + state.episode_memories
@@ -652,14 +652,10 @@ async def _process_memories(state: ExtractionState, memory_manager: MemoryManage
         await _save_episodes(state, episodes_to_save, episodic_source)
 
     if episodic_source:
-        semantic_memories, event_logs = await _extract_semantic_and_eventlog(
-            state, memory_manager, episodic_source
-        )
-        await _save_semantic_and_eventlog(state, semantic_memories, event_logs)
-
-    await update_status_after_memcell(
-        state.request, state.memcell, state.current_time, state.request.raw_data_type
-    )
+        foresight_memories, event_logs = await _extract_foresight_and_eventlog(state, memory_manager, episodic_source)
+        await _save_foresight_and_eventlog(state, foresight_memories, event_logs)
+    
+    await update_status_after_memcell(state.request, state.memcell, state.current_time, state.request.raw_data_type)
 
 
 def _clone_episodes_for_users(state: ExtractionState) -> List[Memory]:
@@ -701,14 +697,14 @@ async def _save_episodes(
         state.parent_docs_map[str(saved_doc.event_id)] = saved_doc
 
 
-async def _extract_semantic_and_eventlog(
-    state: ExtractionState, memory_manager: MemoryManager, episodic_source: List[Memory]
-) -> Tuple[List[SemanticMemoryItem], List[EventLog]]:
-    """提取 Semantic 和 EventLog"""
-    logger.info(
-        f"[MemCell处理] 提取 Semantic/EventLog，共 {len(episodic_source)} 个 Episode"
-    )
-
+async def _extract_foresight_and_eventlog(
+    state: ExtractionState,
+    memory_manager: MemoryManager,
+    episodic_source: List[Memory]
+) -> Tuple[List[ForesightItem], List[EventLog]]:
+    """提取 Foresight 和 EventLog"""
+    logger.info(f"[MemCell处理] 提取 Foresight/EventLog，共 {len(episodic_source)} 个 Episode")
+    
     tasks = []
     metadata = []
 
@@ -717,29 +713,29 @@ async def _extract_semantic_and_eventlog(
             continue
         tasks.append(
             memory_manager.extract_memory(
-                memcell=state.memcell,
-                memory_type=MemoryType.SEMANTIC_MEMORY,
-                user_id=ep.user_id,
+                memcell=state.memcell, 
+                memory_type=MemoryType.FORESIGHT,
+                user_id=ep.user_id, 
                 episode_memory=ep,
             )
         )
-        metadata.append({'type': MemoryType.SEMANTIC_MEMORY, 'ep': ep})
+        metadata.append({'type': MemoryType.FORESIGHT, 'ep': ep})
         tasks.append(
             memory_manager.extract_memory(
-                memcell=state.memcell,
-                memory_type=MemoryType.PERSONAL_EVENT_LOG,
-                user_id=ep.user_id,
+                memcell=state.memcell, 
+                memory_type=MemoryType.EVENT_LOG,
+                user_id=ep.user_id, 
                 episode_memory=ep,
             )
         )
-        metadata.append({'type': MemoryType.PERSONAL_EVENT_LOG, 'ep': ep})
+        metadata.append({'type': MemoryType.EVENT_LOG, 'ep': ep})
 
     if not tasks:
         return [], []
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    semantic_memories = []
+    
+    foresight_memories = []
     event_logs = []
 
     for meta, result in zip(metadata, results):
@@ -747,39 +743,37 @@ async def _extract_semantic_and_eventlog(
             continue
 
         ep = meta['ep']
-        if meta['type'] == MemoryType.SEMANTIC_MEMORY:
+        if meta['type'] == MemoryType.FORESIGHT:
             for mem in result:
                 mem.parent_event_id = ep.event_id
                 mem.user_id = ep.user_id
                 mem.group_id = ep.group_id
                 mem.group_name = ep.group_name
                 mem.user_name = ep.user_name
-                semantic_memories.append(mem)
-        elif meta['type'] == MemoryType.PERSONAL_EVENT_LOG:
+                foresight_memories.append(mem)
+        elif meta['type'] == MemoryType.EVENT_LOG:
             result.parent_event_id = ep.event_id
             result.user_id = ep.user_id
             result.group_id = ep.group_id
             result.group_name = ep.group_name
             result.user_name = ep.user_name
             event_logs.append(result)
+    
+    return foresight_memories, event_logs
 
-    return semantic_memories, event_logs
 
-
-async def _save_semantic_and_eventlog(
+async def _save_foresight_and_eventlog(
     state: ExtractionState,
-    semantic_memories: List[SemanticMemoryItem],
-    event_logs: List[EventLog],
+    foresight_memories: List[ForesightItem],
+    event_logs: List[EventLog]
 ):
-    """保存 Semantic 和 EventLog"""
-    semantic_docs = []
-    for mem in semantic_memories:
+    """保存 Foresight 和 EventLog"""
+    foresight_docs = []
+    for mem in foresight_memories:
         parent_doc = state.parent_docs_map.get(str(mem.parent_event_id))
         if parent_doc:
-            semantic_docs.append(
-                _convert_semantic_memory_to_doc(mem, parent_doc, state.current_time)
-            )
-
+            foresight_docs.append(_convert_foresight_to_doc(mem, parent_doc, state.current_time))
+    
     event_log_docs = []
     for el in event_logs:
         parent_doc = state.parent_docs_map.get(str(el.parent_event_id))
@@ -790,34 +784,20 @@ async def _save_semantic_and_eventlog(
 
     # assistant 场景：复制给每个用户
     if state.is_assistant_scene:
-        user_ids = [
-            u
-            for u in state.participants
-            if "robot" not in u.lower() and "assistant" not in u.lower()
-        ]
-        semantic_docs.extend(
-            [
-                doc.model_copy(update={"user_id": uid, "user_name": uid})
-                for doc in semantic_docs
-                for uid in user_ids
-            ]
-        )
-        event_log_docs.extend(
-            [
-                doc.model_copy(update={"user_id": uid, "user_name": uid})
-                for doc in event_log_docs
-                for uid in user_ids
-            ]
-        )
-        logger.info(f"[MemCell处理] 复制 Semantic/EventLog 给 {len(user_ids)} 个用户")
-
+        user_ids = [u for u in state.participants if "robot" not in u.lower() and "assistant" not in u.lower()]
+        foresight_docs.extend([
+            doc.model_copy(update={"user_id": uid, "user_name": uid})
+            for doc in foresight_docs for uid in user_ids
+        ])
+        event_log_docs.extend([
+            doc.model_copy(update={"user_id": uid, "user_name": uid})
+            for doc in event_log_docs for uid in user_ids
+        ])
+        logger.info(f"[MemCell处理] 复制 Foresight/EventLog 给 {len(user_ids)} 个用户")
+    
     payloads = []
-    payloads.extend(
-        MemoryDocPayload(MemoryType.SEMANTIC_MEMORY, doc) for doc in semantic_docs
-    )
-    payloads.extend(
-        MemoryDocPayload(MemoryType.PERSONAL_EVENT_LOG, doc) for doc in event_log_docs
-    )
+    payloads.extend(MemoryDocPayload(MemoryType.FORESIGHT, doc) for doc in foresight_docs)
+    payloads.extend(MemoryDocPayload(MemoryType.EVENT_LOG, doc) for doc in event_log_docs)
     if payloads:
         await save_memory_docs(payloads)
 
@@ -1038,24 +1018,24 @@ async def save_memory_docs(
 
         saved_result[MemoryType.EPISODIC_MEMORY] = saved_episodic
 
-    # Semantic
-    semantic_docs = grouped_docs.get(MemoryType.SEMANTIC_MEMORY, [])
-    if semantic_docs:
-        semantic_repo = get_bean_by_type(SemanticMemoryRecordRawRepository)
-        saved_semantic = await semantic_repo.create_batch(semantic_docs)
-        saved_result[MemoryType.SEMANTIC_MEMORY] = saved_semantic
+    # Foresight
+    foresight_docs = grouped_docs.get(MemoryType.FORESIGHT, [])
+    if foresight_docs:
+        foresight_repo = get_bean_by_type(ForesightRecordRawRepository)
+        saved_foresight = await foresight_repo.create_batch(foresight_docs)
+        saved_result[MemoryType.FORESIGHT] = saved_foresight
 
         sync_service = get_bean_by_type(MemorySyncService)
-        await sync_service.sync_batch_semantic_memories(
-            saved_semantic, sync_to_es=True, sync_to_milvus=True
+        await sync_service.sync_batch_foresights(
+            saved_foresight, sync_to_es=True, sync_to_milvus=True
         )
 
     # Event Log
-    event_log_docs = grouped_docs.get(MemoryType.PERSONAL_EVENT_LOG, [])
+    event_log_docs = grouped_docs.get(MemoryType.EVENT_LOG, [])
     if event_log_docs:
         event_log_repo = get_bean_by_type(EventLogRecordRawRepository)
         saved_event_logs = await event_log_repo.create_batch(event_log_docs)
-        saved_result[MemoryType.PERSONAL_EVENT_LOG] = saved_event_logs
+        saved_result[MemoryType.EVENT_LOG] = saved_event_logs
 
         sync_service = get_bean_by_type(MemorySyncService)
         await sync_service.sync_batch_event_logs(

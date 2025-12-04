@@ -387,13 +387,13 @@ class MemoryControllerTester:
 
         return status_code, response
 
-    def test_fetch_personal_semantic_memory(self):
-        """测试3: GET /api/v1/memories - 获取个人语义记忆（personal_semantic_memory类型）"""
-        self.print_section("测试3: GET /api/v1/memories - 获取个人语义记忆")
+    def test_fetch_personal_foresight(self):
+        """测试3: GET /api/v1/memories - 获取个人前瞻（personal_foresight类型）"""
+        self.print_section("测试3: GET /api/v1/memories - 获取个人前瞻")
 
         params = {
             "user_id": self.user_id,
-            "memory_type": "personal_semantic_memory",
+            "memory_type": "personal_foresight",
             "limit": 10,
             "offset": 0,
         }
@@ -434,14 +434,14 @@ class MemoryControllerTester:
                 assert (
                     "parent_episode_id" in memory
                 ), f"第 {idx} 条记忆应包含 parent_episode_id"
-                # 个人语义记忆的user_id可能为None（群组场景），所以不强制检查
+                # 个人前瞻的 user_id 可能为 None（群组场景），所以不强制检查
 
             print(
-                f"✅ Fetch Personal Semantic Memory 成功，返回 {result['total_count']} 条个人语义记忆，已验证深度结构"
+                f"✅ Fetch Personal Foresight 成功，返回 {result['total_count']} 条个人前瞻，已验证深度结构"
             )
         else:
             print(
-                f"✅ Fetch Personal Semantic Memory 成功，返回 {result['total_count']} 条个人语义记忆"
+                f"✅ Fetch Personal Foresight 成功，返回 {result['total_count']} 条个人前瞻"
             )
 
         return status_code, response
@@ -806,7 +806,7 @@ class MemoryControllerTester:
         test_methods = {
             "memorize": self.test_memorize_single_message,
             "fetch_episodic": self.test_fetch_episodic,
-            "fetch_semantic": self.test_fetch_personal_semantic_memory,
+            "fetch_foresight": self.test_fetch_personal_foresight,
             "fetch_event_log": self.test_fetch_event_log,
             "search_keyword": self.test_search_memories_keyword,
             "search_vector": self.test_search_memories_vector,
@@ -924,7 +924,7 @@ def parse_args():
             "all",
             "memorize",
             "fetch_episodic",
-            "fetch_semantic",
+            "fetch_foresight",
             "fetch_event_log",
             "search_keyword",
             "search_vector",

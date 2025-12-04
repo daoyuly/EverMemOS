@@ -1,5 +1,5 @@
 """
-语义记忆提取器 - 基于联想预测方法
+前瞻提取器 - 基于联想预测方法
 从MemCell中生成对用户未来生活、决策可能产生的影响预测
 """
 
@@ -9,25 +9,25 @@ from datetime import datetime, timedelta
 
 # 使用动态语言提示词导入（根据 MEMORY_LANGUAGE 环境变量自动选择）
 from ..prompts import (
-    get_group_semantic_generation_prompt,
-    get_semantic_generation_prompt,
+    get_group_foresight_generation_prompt,
+    get_foresight_generation_prompt,
 )
 from ..llm.llm_provider import LLMProvider
 from .base_memory_extractor import MemoryExtractor, MemoryExtractRequest
-from api_specs.memory_types import MemoryType, MemCell, Memory, SemanticMemoryItem
+from api_specs.memory_types import MemoryType, MemCell, Memory, ForesightItem
 from agentic_layer.vectorize_service import get_vectorize_service
 from core.observation.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class SemanticMemoryExtractor(MemoryExtractor):
+class ForesightExtractor(MemoryExtractor):
     """
-    语义记忆提取器 - 基于联想预测方法
+    前瞻提取器 - 基于联想预测方法
 
     支持两种模式：
-    1. use_group_prompt=False: 基于EpisodeMemory对象生成联想，返回的EpisodeMemory对象中添加semantic_memories字段
-    2. use_group_prompt=True: 基于MemCell对象生成联想，返回的MemCell对象中添加semantic_memories字段
+    1. use_group_prompt=False: 基于EpisodeMemory对象生成联想，返回的EpisodeMemory对象中添加foresights字段
+    2. use_group_prompt=True: 基于MemCell对象生成联想，返回的MemCell对象中添加foresights字段
 
     新的策略实现：
     1. 基于内容，大模型联想出10条对用户后续的生活、决策可能产生的影响
@@ -35,28 +35,28 @@ class SemanticMemoryExtractor(MemoryExtractor):
     3. 重点关注用户个人层面的影响
 
     主要方法：
-    - generate_semantic_memories_for_memcell(): 为MemCell生成语义记忆联想
-    - generate_semantic_memories_for_episode(): 为EpisodeMemory生成语义记忆联想
+    - generate_foresights_for_memcell(): 为MemCell生成前瞻联想
+    - generate_foresights_for_episode(): 为EpisodeMemory生成前瞻联想
     """
 
     def __init__(self, llm_provider: LLMProvider):
         """
-        初始化语义记忆提取器
+        初始化前瞻提取器
 
         Args:
             llm_provider: LLM提供者
         """
-        super().__init__(MemoryType.SEMANTIC_MEMORY)
+        super().__init__(MemoryType.FORESIGHT)
         self.llm_provider = llm_provider
 
-        logger.info("语义记忆提取器已初始化（联想预测模式）")
+        logger.info("前瞻提取器已初始化（联想预测模式）")
 
     async def extract_memory(self, request: MemoryExtractRequest) -> Optional[Memory]:
         """
         实现抽象基类要求的 extract_memory 方法
 
-        注意：SemanticMemoryExtractor 不应该直接使用 extract_memory 方法
-        应该使用 generate_semantic_memories_for_memcell 或 generate_semantic_memories_for_episode
+        注意：ForesightExtractor 不应该直接使用 extract_memory 方法
+        应该使用 generate_foresights_for_memcell 或 generate_foresights_for_episode
 
         Args:
             request: 记忆提取请求
@@ -65,15 +65,15 @@ class SemanticMemoryExtractor(MemoryExtractor):
             None - 此方法不应该被调用
         """
         raise NotImplementedError(
-            "SemanticMemoryExtractor 不应该直接使用 extract_memory 方法。"
-            "请使用 generate_semantic_memories_for_memcell 或 generate_semantic_memories_for_episode 方法。"
+            "ForesightExtractor 不应该直接使用 extract_memory 方法。"
+            "请使用 generate_foresights_for_memcell 或 generate_foresights_for_episode 方法。"
         )
 
-    async def generate_semantic_memories_for_memcell(
+    async def generate_foresights_for_memcell(
         self, memcell: MemCell
-    ) -> List[SemanticMemoryItem]:
+    ) -> List[ForesightItem]:
         """
-        为MemCell生成语义记忆联想预测
+        为MemCell生成前瞻联想预测
         
         这是新的策略：基于MemCell内容，大模型联想出10条对用户后续的生活、决策可能产生的影响
         
@@ -81,22 +81,25 @@ class SemanticMemoryExtractor(MemoryExtractor):
             memcell: MemCell对象
         
         Returns:
-            语义记忆联想项目列表（10条），包含时间信息
+            前瞻联想项目列表（10条），包含时间信息
         """
         # 最多重试5次
         for retry in range(5):
             try:
-                logger.info(f"🎯 为MemCell生成语义记忆联想: {memcell.subject}，重试次数: {retry+1}/5")
+                if retry == 0:
+                    logger.info(f"🎯 为MemCell生成前瞻联想: {memcell.subject}")
+                else:
+                    logger.info(f"🎯 为MemCell生成前瞻联想: {memcell.subject}，重试次数: {retry}/5")
 
                 # 构建提示词
-                prompt = get_group_semantic_generation_prompt(
+                prompt = get_group_foresight_generation_prompt(
                     memcell_summary=memcell.summary,
                     memcell_episode=memcell.episode or "",
                     user_ids=memcell.user_id_list,
                 )
 
                 # 调用LLM生成联想
-                logger.debug(f"📝 开始调用LLM生成语义记忆联想，提示词长度: {len(prompt)}")
+                logger.debug(f"📝 开始调用LLM生成前瞻联想，提示词长度: {len(prompt)}")
                 response = await self.llm_provider.generate(prompt=prompt, temperature=0.3)
                 logger.debug(
                     f"✅ LLM调用完成，响应长度: {len(response) if response else 0}"
@@ -104,42 +107,42 @@ class SemanticMemoryExtractor(MemoryExtractor):
 
                 # 解析JSON响应
                 start_time = self._extract_start_time_from_timestamp(memcell.timestamp)
-                semantic_memories = await self._parse_semantic_memories_response(
+                foresights = await self._parse_foresights_response(
                     response, memcell.event_id, start_time
                 )
 
                 # 验证必须至少有1条
-                if len(semantic_memories) == 0:
-                    raise ValueError("LLM返回的语义记忆列表为空")
+                if len(foresights) == 0:
+                    raise ValueError("LLM返回的前瞻列表为空")
 
                 # 确保返回恰好10条（不足则警告，但不重试）
-                if len(semantic_memories) > 10:
-                    semantic_memories = semantic_memories[:10]
-                elif len(semantic_memories) < 10:
+                if len(foresights) > 10:
+                    foresights = foresights[:10]
+                elif len(foresights) < 10:
                     logger.warning(
-                        f"生成的语义记忆联想数量不足10条，实际生成: {len(semantic_memories)}"
+                        f"生成的前瞻联想数量不足10条，实际生成: {len(foresights)}"
                     )
 
-                logger.info(f"✅ 成功生成 {len(semantic_memories)} 条语义记忆联想")
-                for i, memory in enumerate(semantic_memories[:3], 1):
+                logger.info(f"✅ 成功生成 {len(foresights)} 条前瞻联想")
+                for i, memory in enumerate(foresights[:3], 1):
                     logger.info(f"  联想{i}: {memory.content}")
 
-                return semantic_memories
+                return foresights
 
             except Exception as e:
-                logger.warning(f"生成语义记忆联想重试 {retry+1}/5: {e}")
+                logger.warning(f"生成前瞻联想重试 {retry+1}/5: {e}")
                 if retry == 4:
-                    logger.error(f"生成语义记忆联想失败，已重试5次")
+                    logger.error(f"生成前瞻联想失败，已重试5次")
                     return []
                 continue
         
         return []
 
-    async def generate_semantic_memories_for_episode(
+    async def generate_foresights_for_episode(
         self, episode: Memory
-    ) -> List[SemanticMemoryItem]:
+    ) -> List[ForesightItem]:
         """
-        为EpisodeMemory生成语义记忆联想预测
+        为EpisodeMemory生成前瞻联想预测
         
         这是个人模式：基于EpisodeMemory内容，大模型联想出10条对用户后续的生活、决策可能产生的影响
         
@@ -147,16 +150,16 @@ class SemanticMemoryExtractor(MemoryExtractor):
             episode: EpisodeMemory对象
         
         Returns:
-            语义记忆联想项目列表（10条），包含时间信息
+            前瞻联想项目列表（10条），包含时间信息
         """
         # 最多重试5次
         for retry in range(5):
             try:
-                logger.info(f"🎯 为EpisodeMemory生成语义记忆联想: {episode.subject}，重试次数: {retry+1}/5")
+                logger.info(f"🎯 为EpisodeMemory生成前瞻联想: {episode.subject}，重试次数: {retry+1}/5")
 
                 # 构建提示词
                 # 直接使用episode的user_id
-                prompt = get_semantic_generation_prompt(
+                prompt = get_foresight_generation_prompt(
                     episode_memory=episode.summary or "",
                     episode_content=episode.episode or "",
                     user_id=episode.user_id,
@@ -170,32 +173,32 @@ class SemanticMemoryExtractor(MemoryExtractor):
                     episode.ori_event_id_list[0] if episode.ori_event_id_list else None
                 )
                 start_time = self._extract_start_time_from_timestamp(episode.timestamp)
-                semantic_memories = await self._parse_semantic_memories_response(
+                foresights = await self._parse_foresights_response(
                     response, source_episode_id, start_time
                 )
 
                 # 验证必须至少有1条
-                if len(semantic_memories) == 0:
-                    raise ValueError("LLM返回的语义记忆列表为空")
+                if len(foresights) == 0:
+                    raise ValueError("LLM返回的前瞻列表为空")
 
                 # 确保返回恰好10条（不足则警告，但不重试）
-                if len(semantic_memories) > 10:
-                    semantic_memories = semantic_memories[:10]
-                elif len(semantic_memories) < 10:
+                if len(foresights) > 10:
+                    foresights = foresights[:10]
+                elif len(foresights) < 10:
                     logger.warning(
-                        f"生成的语义记忆联想数量不足10条，实际生成: {len(semantic_memories)}"
+                        f"生成的前瞻联想数量不足10条，实际生成: {len(foresights)}"
                     )
 
-                logger.info(f"✅ 成功生成 {len(semantic_memories)} 条语义记忆联想")
-                for i, memory in enumerate(semantic_memories[:3], 1):
+                logger.info(f"✅ 成功生成 {len(foresights)} 条前瞻联想")
+                for i, memory in enumerate(foresights[:3], 1):
                     logger.info(f"  联想{i}: {memory.content}")
 
-                return semantic_memories
+                return foresights
 
             except Exception as e:
-                logger.warning(f"生成语义记忆联想重试 {retry+1}/5: {e}")
+                logger.warning(f"生成前瞻联想重试 {retry+1}/5: {e}")
                 if retry == 4:
-                    logger.error(f"生成语义记忆联想失败，已重试5次")
+                    logger.error(f"生成前瞻联想失败，已重试5次")
                     return []
                 continue
         
@@ -238,14 +241,14 @@ class SemanticMemoryExtractor(MemoryExtractor):
             )
             return None
 
-    async def _parse_semantic_memories_response(
+    async def _parse_foresights_response(
         self,
         response: str,
         source_episode_id: Optional[str] = None,
         start_time: Optional[str] = None,
-    ) -> List[SemanticMemoryItem]:
+    ) -> List[ForesightItem]:
         """
-        解析LLM的JSON响应，提取语义记忆联想列表
+        解析LLM的JSON响应，提取前瞻联想列表
 
         Args:
             response: LLM响应文本
@@ -253,7 +256,7 @@ class SemanticMemoryExtractor(MemoryExtractor):
             start_time: 开始时间，格式为YYYY-MM-DD
 
         Returns:
-            语义记忆联想项目列表
+            前瞻联想项目列表
         """
         try:
             # 首先尝试提取代码块中的JSON
@@ -271,7 +274,7 @@ class SemanticMemoryExtractor(MemoryExtractor):
 
             # 确保data是列表
             if isinstance(data, list):
-                semantic_memories = []
+                foresights = []
                 
                 # 先收集所有需要处理的数据
                 items_to_process = []
@@ -316,7 +319,7 @@ class SemanticMemoryExtractor(MemoryExtractor):
                 contents = [item['content'] for item in items_to_process]
                 vectors_batch = await vs.get_embeddings(contents)  # 使用 get_embeddings (List[str])
                 
-                # 创建SemanticMemoryItem对象
+                # 创建ForesightItem对象
                 for i, item_data in enumerate(items_to_process):
                     # 处理 embedding：可能是 numpy 数组或已经是列表
                     vector = vectors_batch[i]
@@ -325,7 +328,7 @@ class SemanticMemoryExtractor(MemoryExtractor):
                     elif not isinstance(vector, list):
                         vector = list(vector)
                     
-                    memory_item = SemanticMemoryItem(
+                    memory_item = ForesightItem(
                         content=item_data['content'],
                         evidence=item_data['evidence'],
                         start_time=item_data['start_time'],
@@ -335,9 +338,9 @@ class SemanticMemoryExtractor(MemoryExtractor):
                         vector=vector,
                         vector_model=vs.get_model_name(),
                     )
-                    semantic_memories.append(memory_item)
+                    foresights.append(memory_item)
 
-                return semantic_memories
+                return foresights
             else:
                 logger.error(f"响应不是JSON数组格式: {data}")
                 return []
@@ -347,7 +350,7 @@ class SemanticMemoryExtractor(MemoryExtractor):
             logger.debug(f"响应内容: {response[:200]}...")
             return []
         except Exception as e:
-            logger.error(f"解析语义记忆响应时出错: {e}")
+            logger.error(f"解析前瞻响应时出错: {e}")
             return []
 
     def _extract_start_time_from_timestamp(self, timestamp: datetime) -> str:

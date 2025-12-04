@@ -32,13 +32,12 @@ class MemoryType(str, Enum):
     CORE = "core"  # 核心记忆
 
     EPISODIC_MEMORY = "episodic_memory"
-    SEMANTIC_MEMORY = "semantic_memory"  # 暂时先不删除等着xinze确认
+    FORESIGHT = "foresight"  # 前瞻记忆
     ENTITY = "entity"
     RELATION = "relation"
     BEHAVIOR_HISTORY = "behavior_history"
 
-    PERSONAL_SEMANTIC_MEMORY = "personal_semantic_memory"
-    PERSONAL_EVENT_LOG = "personal_event_log"  # 事件日志（原子事实）
+    EVENT_LOG = "event_log"  # 事件日志（原子事实）
 
     GROUP_PROFILE = "group_profile"  # 群组画像
 
@@ -140,8 +139,8 @@ class EpisodicMemoryModel:
 
 
 @dataclass
-class SemanticMemoryModel:
-    """语义记忆模型"""
+class ForesightModel:
+    """前瞻模型"""
 
     id: str
     user_id: str
@@ -281,14 +280,14 @@ class EventLogModel:
 
 
 @dataclass
-class SemanticMemoryRecordModel:
-    """语义记忆记录模型
+class ForesightRecordModel:
+    """前瞻记录模型
 
-    从情景记忆中提取的语义信息，支持个人和群组语义记忆。
+    从情景记忆中提取的前瞻信息，支持个人和群组前瞻。
     """
 
     id: str
-    content: str  # 语义记忆内容
+    content: str  # 前瞻内容
     parent_episode_id: str  # 父情景记忆ID
 
     # 可选字段
@@ -302,7 +301,7 @@ class SemanticMemoryRecordModel:
     participants: Optional[List[str]] = None
     vector: Optional[List[float]] = None
     vector_model: Optional[str] = None
-    evidence: Optional[str] = None  # 支持该语义记忆的证据
+    evidence: Optional[str] = None  # 支持该前瞻的证据
     extend: Optional[Dict[str, Any]] = None
 
     # 通用时间戳
@@ -317,11 +316,11 @@ MemoryModel = Union[
     ProfileModel,
     PreferenceModel,
     EpisodicMemoryModel,
-    SemanticMemoryModel,
+    ForesightModel,
     EntityModel,
     RelationModel,
     BehaviorHistoryModel,
     CoreMemoryModel,
     EventLogModel,
-    SemanticMemoryRecordModel,
+    ForesightRecordModel,
 ]

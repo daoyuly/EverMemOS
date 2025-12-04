@@ -11,7 +11,7 @@ from .llm.llm_provider import LLMProvider
 from .memcell_extractor.conv_memcell_extractor import ConvMemCellExtractor
 from .memcell_extractor.base_memcell_extractor import RawData
 from .memcell_extractor.conv_memcell_extractor import ConversationMemCellExtractRequest
-from api_specs.memory_types import MemCell, RawDataType, MemoryType, SemanticMemoryItem
+from api_specs.memory_types import MemCell, RawDataType, MemoryType, ForesightItem
 from .memory_extractor.episode_memory_extractor import (
     EpisodeMemoryExtractor,
     EpisodeMemoryExtractRequest,
@@ -26,7 +26,7 @@ from .memory_extractor.group_profile_memory_extractor import (
     GroupProfileMemoryExtractRequest,
 )
 from .memory_extractor.event_log_extractor import EventLogExtractor
-from .memory_extractor.semantic_memory_extractor import SemanticMemoryExtractor
+from .memory_extractor.foresight_extractor import ForesightExtractor
 from .memcell_extractor.base_memcell_extractor import StatusResult
 
 
@@ -39,7 +39,7 @@ class MemoryManager:
     
     职责：
     1. 提取 MemCell（边界检测 + 原始数据）
-    2. 提取 Episode/Semantic/EventLog/Profile 等记忆（基于 MemCell 或 episode）
+    2. 提取 Episode/Foresight/EventLog/Profile 等记忆（基于 MemCell 或 episode）
     3. 管理所有 Extractor 的生命周期
     4. 提供统一的记忆提取接口
     """
@@ -120,7 +120,7 @@ class MemoryManager:
         group_name: Optional[str] = None,
         old_memory_list: Optional[List[Memory]] = None,
         user_organization: Optional[List] = None,
-        episode_memory: Optional[Memory] = None,  # 用于 Semantic 和 EventLog 提取
+        episode_memory: Optional[Memory] = None,  # 用于 Foresight 和 EventLog 提取
     ):
         """
         提取单个记忆
@@ -135,11 +135,11 @@ class MemoryManager:
             group_name: 群组名称
             old_memory_list: 历史记忆列表
             user_organization: 用户组织信息
-            episode_memory: Episode 记忆（用于提取 Semantic/EventLog）
+            episode_memory: Episode 记忆（用于提取 Foresight/EventLog）
         
         Returns:
             - EPISODIC_MEMORY: 返回 Memory（群组或个人）
-            - SEMANTIC_MEMORY: 返回 List[SemanticMemoryItem]
+            - FORESIGHT: 返回 List[ForesightItem]
             - PERSONAL_EVENT_LOG: 返回 EventLog
             - PROFILE/GROUP_PROFILE: 返回 Memory
         """
@@ -148,10 +148,10 @@ class MemoryManager:
             case MemoryType.EPISODIC_MEMORY:
                 return await self._extract_episode(memcell, user_id, group_id)
             
-            case MemoryType.SEMANTIC_MEMORY:
-                return await self._extract_semantic(episode_memory)
+            case MemoryType.FORESIGHT:
+                return await self._extract_foresight(episode_memory)
             
-            case MemoryType.PERSONAL_EVENT_LOG:
+            case MemoryType.EVENT_LOG:
                 return await self._extract_event_log(episode_memory)
             
             case MemoryType.PROFILE:
@@ -196,19 +196,19 @@ class MemoryManager:
         
         return await self._episode_extractor.extract_memory(request)
     
-    async def _extract_semantic(
+    async def _extract_foresight(
         self,
         episode_memory: Optional[Memory],
-    ) -> List[SemanticMemoryItem]:
-        """提取 Semantic Memory"""
+    ) -> List[ForesightItem]:
+        """提取 Foresight"""
         if not episode_memory:
-            logger.warning("[MemoryManager] 缺少 episode_memory，无法提取 Semantic")
+            logger.warning("[MemoryManager] 缺少 episode_memory，无法提取 Foresight")
             return []
         
-        logger.debug(f"[MemoryManager] 为 Episode 提取 Semantic: user_id={episode_memory.user_id}")
+        logger.debug(f"[MemoryManager] 为 Episode 提取 Foresight: user_id={episode_memory.user_id}")
         
-        extractor = SemanticMemoryExtractor(llm_provider=self.llm_provider)
-        return await extractor.generate_semantic_memories_for_episode(episode_memory)
+        extractor = ForesightExtractor(llm_provider=self.llm_provider)
+        return await extractor.generate_foresights_for_episode(episode_memory)
     
     async def _extract_event_log(
         self,

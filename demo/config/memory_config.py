@@ -73,6 +73,7 @@ class ExtractModeConfig:
     group_id: Optional[str] = None
     group_name: Optional[str] = None
     enable_profile_extraction: bool = True
+    enable_foresight_extraction: bool = False
 
     def __post_init__(self):
         # 自动设置输出目录
@@ -83,11 +84,11 @@ class ExtractModeConfig:
         if self.scenario_type == ScenarioType.GROUP_CHAT:
             self.group_id = self.group_id or "group_chat_001"
             self.group_name = self.group_name or "Project Discussion Group"
-            self.enable_semantic_extraction = False
+            self.enable_foresight_extraction = False
         else:
             self.group_id = self.group_id or "assistant"
             self.group_name = self.group_name or "Personal Assistant"
-            self.enable_semantic_extraction = True
+            self.enable_foresight_extraction = True
         
         # 向后兼容
         self.prompt_language = self.language

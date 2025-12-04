@@ -12,7 +12,7 @@
     from memory_layer.prompts import (
         EPISODE_GENERATION_PROMPT,
         CONVERSATION_PROFILE_PART1_EXTRACTION_PROMPT,
-        get_semantic_generation_prompt,
+        get_foresight_generation_prompt,
     )
 """
 
@@ -56,10 +56,10 @@ if MEMORY_LANGUAGE == 'zh':
         BEHAVIOR_ANALYSIS_PROMPT,
     )
     
-    # Semantic Memory 相关
-    from .zh.semantic_mem_prompts import (
-        get_group_semantic_generation_prompt,
-        get_semantic_generation_prompt,
+    # Foresight 相关
+    from .zh.foresight_prompts import (
+        get_group_foresight_generation_prompt,
+        get_foresight_generation_prompt,
     )
     
     # Event Log 相关
@@ -92,10 +92,10 @@ else:
         BEHAVIOR_ANALYSIS_PROMPT,
     )
     
-    # Semantic Memory 相关
-    from .en.semantic_mem_prompts import (
-        get_group_semantic_generation_prompt,
-        get_semantic_generation_prompt,
+    # Foresight 相关
+    from .en.foresight_prompts import (
+        get_group_foresight_generation_prompt,
+        get_foresight_generation_prompt,
     )
     
     # Event Log 相关

@@ -268,13 +268,13 @@ class AgenticV3Controller(BaseController):
         - **data_source** (可选): 数据源
           * "episode": 从 MemCell.episode 检索（默认）
           * "event_log": 从 event_log.atomic_fact 检索
-          * "semantic_memory": 从语义记忆检索
+          * "foresight": 从前瞻检索
           * "profile": 仅需 user_id + group_id 的档案检索（query 可空）
-        - **current_time** (可选): 当前时间，YYYY-MM-DD格式，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
+        - **current_time** (可选): 当前时间，YYYY-MM-DD格式，用于过滤有效期内的前瞻（仅 data_source=foresight 时有效）
         - **radius** (可选): COSINE 相似度阈值，范围 [-1, 1]，默认 0.6
           * 只返回相似度 >= radius 的结果
           * 影响向量检索部分（embedding/rrf 模式）的结果质量
-          * 对语义记忆和情景记忆有效（semantic_memory/episode），事件日志使用 L2 距离暂不支持
+          * 对前瞻和情景记忆有效（foresight/episode），事件日志使用 L2 距离暂不支持
         
         ## 返回格式：
         ```json
@@ -323,8 +323,19 @@ class AgenticV3Controller(BaseController):
 
             if not query and data_source != "profile":
                 raise ValueError("缺少必需参数：query")
+            
+            # 验证 data_source 参数（兼容旧参数名 memcell）
             if data_source == "memcell":
                 data_source = "episode"
+            
+            # 验证 data_source 是有效值
+            VALID_DATA_SOURCES = {"episode", "event_log", "foresight", "profile"}
+            if data_source not in VALID_DATA_SOURCES:
+                raise ValueError(
+                    f"无效的 data_source: '{data_source}'，"
+                    f"有效值: {', '.join(sorted(VALID_DATA_SOURCES))}"
+                )
+            
             if data_source == "profile":
                 if not user_id or not group_id:
                     raise ValueError(

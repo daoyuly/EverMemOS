@@ -37,8 +37,8 @@ from memory_layer.memory_extractor.base_memory_extractor import (
     MemoryExtractRequest,
 )
 from memory_layer.memory_extractor.event_log_extractor import EventLogExtractor
-from memory_layer.memory_extractor.semantic_memory_extractor import (
-    SemanticMemoryExtractor,
+from memory_layer.memory_extractor.foresight_extractor import (
+    ForesightExtractor,
 )
 from api_specs.memory_types import RawDataType
 
@@ -164,20 +164,20 @@ async def _extract_all_memories_for_memcell(
     memcell: MemCell,
     speakers: set,
     episode_extractor,
-    semantic_extractor,
+    foresight_extractor,
     conv_id: str,
 ):
     """
     串行提取一个 MemCell 的所有记忆
     
-    流程：Episode → Semantic (可选)
+    流程：Episode → Foresight (可选)
     注意：EventLog 在外部并发处理，因为需要所有 MemCell 收集完毕后统一处理
     
     Args:
         memcell: 要提取记忆的 MemCell
         speakers: 对话参与者
         episode_extractor: Episode 提取器
-        semantic_extractor: Semantic 提取器（可选）
+        foresight_extractor: Foresight 提取器（可选）
         conv_id: 对话 ID（用于日志）
     """
     # 1. 提取 Episode（必须）
@@ -195,13 +195,13 @@ async def _extract_all_memories_for_memcell(
         memcell.subject = episode_memory.subject if episode_memory.subject else ""
         memcell.summary = episode_memory.episode[:200] + "..."
         
-        # 2. 提取 Semantic（可选）
-        if semantic_extractor:
-            semantic_memories = await semantic_extractor.generate_semantic_memories_for_episode(
-                episode_memory  # 传递 Memory 对象
+        # 2. 提取 Foresight（可选）
+        if foresight_extractor:
+            foresight_memories = await foresight_extractor.generate_foresight_memories_for_episode(
+                episode_memory,
             )
-            if semantic_memories:
-                memcell.semantic_memories = semantic_memories
+            if foresight_memories:
+                memcell.foresight_memories = foresight_memories
     else:
         # Episode 提取失败 - 直接抛出异常，不要隐藏错误
         raise ValueError(f"❌ Episode 提取失败！conv_id={conv_id}, memcell_id={memcell.event_id}")
@@ -215,16 +215,16 @@ async def memcell_extraction_from_conversation(
     conv_id: str = None,  # Add conversation ID for progress bar description
     progress: Progress = None,  # Add progress bar object
     task_id: int = None,  # Add task ID
-    enable_semantic_extraction: bool = False,  # 是否提取语义记忆
+    enable_foresight_extraction: bool = False,  # 是否提取前瞻
 ) -> list:
 
     episode_extractor = EpisodeMemoryExtractor(
         llm_provider=llm_provider, use_eval_prompts=True
     )
-    # 如果启用语义记忆提取，创建 SemanticMemoryExtractor
-    semantic_extractor = None
-    if enable_semantic_extraction:
-        semantic_extractor = SemanticMemoryExtractor(llm_provider=llm_provider)
+    # 如果启用前瞻提取，创建 ForesightExtractor
+    foresight_extractor = None
+    if enable_foresight_extraction:
+        foresight_extractor = ForesightExtractor(llm_provider=llm_provider)
     
     memcell_list = []
     speakers = {
@@ -279,7 +279,7 @@ async def memcell_extraction_from_conversation(
                 memcell=memcell_result,
                 speakers=speakers,
                 episode_extractor=episode_extractor,
-                semantic_extractor=semantic_extractor,
+                foresight_extractor=foresight_extractor,
                 conv_id=conv_id,
             )
             
@@ -314,7 +314,7 @@ async def memcell_extraction_from_conversation(
             memcell=memcell,
             speakers=speakers,
             episode_extractor=episode_extractor,
-            semantic_extractor=semantic_extractor,
+            foresight_extractor=foresight_extractor,
             conv_id=conv_id,
         )
         
@@ -407,16 +407,19 @@ async def process_single_conversation(
             group_name=f"LoComo Conversation {conv_id}",
         )
 
-    # Extract MemCells
-    memcell_list = await memcell_extraction_from_conversation(
-        raw_data_list,
-        llm_provider=llm_provider,
-        memcell_extractor=memcell_extractor,
-        conv_id=conv_id,
-        progress=progress,
-        task_id=task_id,
-        enable_semantic_extraction=config.enable_semantic_extraction if config else False,
-    )
+
+
+        # Extract MemCells（传递前瞻提取配置）
+        memcell_list = await memcell_extraction_from_conversation(
+            raw_data_list,
+            llm_provider=llm_provider,
+            memcell_extractor=memcell_extractor,
+            conv_id=conv_id,
+            progress=progress,
+            task_id=task_id,
+            enable_foresight_extraction=config.enable_foresight_extraction if config else False,
+        )
+        # print(f"   ✅ Conv {conv_id}: {len(memcell_list)} memcells extracted")  # Commented to avoid interrupting progress bar
 
     # Convert timestamps to datetime objects before saving
     for memcell in memcell_list:
@@ -543,14 +546,14 @@ async def process_single_conversation(
         
         profile_stats = profile_mgr.get_stats()
 
-    # Save statistics
-    stats_output = {
-        "conv_id": conv_id,
-        "memcells": len(memcell_list),
-        "clustering_enabled": config.enable_clustering if config else False,
-        "profile_enabled": config.enable_profile_extraction if config else False,
-        "semantic_enabled": config.enable_semantic_extraction if config else False,
-    }
+        # Save statistics
+        stats_output = {
+            "conv_id": conv_id,
+            "memcells": len(memcell_list),
+            "clustering_enabled": config.enable_clustering if config else False,
+            "profile_enabled": config.enable_profile_extraction if config else False,
+            "foresight_enabled": config.enable_foresight_extraction if config else False,
+        }
 
     if cluster_stats:
         stats_output["clustering"] = cluster_stats
@@ -595,8 +598,8 @@ async def main():
     console.print(f"Dataset path: {config.datase_path}", style="cyan")
     console.print(f"\nFeature flags:", style="bold yellow")
     console.print(
-        f"  - Semantic extraction: {'✅ Enabled' if config.enable_semantic_extraction else '❌ Disabled'}",
-        style="green" if config.enable_semantic_extraction else "dim",
+        f"  - Foresight extraction: {'✅ Enabled' if config.enable_foresight_extraction else '❌ Disabled'}",
+        style="green" if config.enable_foresight_extraction else "dim",
     )
     console.print(
         f"  - Clustering: {'✅ Enabled' if config.enable_clustering else '❌ Disabled'}",

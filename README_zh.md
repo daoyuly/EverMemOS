@@ -496,11 +496,11 @@ EverMemOS 提供两种检索模式：**轻量级检索**（快速）和 **Agenti
 |------|------|------|
 | `query` | 是* | 自然语言查询（*profile 数据源时可选） |
 | `user_id` | 否 | 用户 ID |
-| `data_source` | 是 | `episode` / `event_log` / `semantic_memory` / `profile` |
+| `data_source` | 是 | `episode` / `event_log` / `foresight` / `profile` |
 | `memory_scope` | 是 | `personal`（仅 user_id） / `group`（仅 group_id） / `all`（两者） |
 | `retrieval_mode` | 是 | `embedding` / `bm25` / `rrf`（推荐） |
 | `group_id` | 否 | 群组 ID |
-| `current_time` | 否 | 过滤有效期内的 semantic_memory（格式: YYYY-MM-DD） |
+| `current_time` | 否 | 过滤有效期内的 foresight（格式: YYYY-MM-DD） |
 | `top_k` | 否 | 返回结果数（默认: 5） |
 
 **示例 1：个人记忆**

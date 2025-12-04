@@ -3,6 +3,7 @@
 可以被其他测试脚本导入使用，也可以独立运行
 """
 
+
 import asyncio
 import time
 from typing import Dict, Any, List
@@ -12,8 +13,8 @@ from pymilvus import utility, Collection
 from infra_layer.adapters.out.search.milvus.memory.episodic_memory_collection import (
     EpisodicMemoryCollection,
 )
-from infra_layer.adapters.out.search.milvus.memory.semantic_memory_collection import (
-    SemanticMemoryCollection,
+from infra_layer.adapters.out.search.milvus.memory.foresight_collection import (
+    ForesightCollection,
 )
 from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
     EventLogCollection,
@@ -21,8 +22,8 @@ from infra_layer.adapters.out.search.milvus.memory.event_log_collection import (
 from infra_layer.adapters.out.search.elasticsearch.memory.episodic_memory import (
     EpisodicMemoryDoc,
 )
-from infra_layer.adapters.out.search.elasticsearch.memory.semantic_memory import (
-    SemanticMemoryDoc,
+from infra_layer.adapters.out.search.elasticsearch.memory.foresight import (
+    ForesightDoc,
 )
 from infra_layer.adapters.out.search.elasticsearch.memory.event_log import EventLogDoc
 from core.di import get_bean_by_type
@@ -113,7 +114,7 @@ def _clear_milvus(
     stats: Dict[str, Any] = {"cleared": [], "errors": []}
     collection_classes = [
         EpisodicMemoryCollection,
-        SemanticMemoryCollection,
+        ForesightCollection,
         EventLogCollection,
     ]
     for cls in collection_classes:
@@ -192,7 +193,7 @@ async def _clear_elasticsearch(
 
         alias_names = [
             EpisodicMemoryDoc.get_index_name(),
-            SemanticMemoryDoc.get_index_name(),
+            ForesightDoc.get_index_name(),
             EventLogDoc.get_index_name(),
         ]
 
@@ -220,9 +221,11 @@ async def _clear_elasticsearch(
                 await es_client.indices.delete_alias(
                     index="*", name=alias, ignore=[404]
                 )
-            es_client_wrapper._initialized = False
-            await es_client_wrapper.initialize_indices(
-                [EpisodicMemoryDoc, SemanticMemoryDoc, EventLogDoc]
+            # 使用 EsIndexInitializer 重新创建索引
+            from core.oxm.es.es_utils import EsIndexInitializer
+            initializer = EsIndexInitializer()
+            await initializer.initialize_indices(
+                [EpisodicMemoryDoc, ForesightDoc, EventLogDoc]
             )
             stats["recreated"] = True
             if verbose:

@@ -910,8 +910,8 @@ class MemoryRepository(ABC):
         pass
     
     @abstractmethod
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """语义搜索"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """前瞻搜索"""
         pass
 ```
 
@@ -942,7 +942,7 @@ class MemoryMongoRepository(MemoryRepository):
         docs = await cursor.to_list(length=limit)
         return [Memory.from_dict(doc) for doc in docs]
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
         # 调用向量搜索（在 infra 层封装）
         # 这里可能还会调用 ElasticSearch 或 Milvus
         ...
@@ -978,8 +978,8 @@ class MemoryService:
     
     async def search_memories(self, user_id: str, query: str) -> List[Memory]:
         """搜索记忆"""
-        # ✅ 正确：通过 repository 进行语义搜索
-        return await self._memory_repo.search_semantic(query, user_id)
+        # ✅ 正确：通过 repository 进行前瞻搜索
+        return await self._memory_repo.search_foresight(query, user_id)
 ```
 
 #### ❌ 错误示例：业务层直接访问数据库
@@ -1081,12 +1081,12 @@ class Container(containers.DeclarativeContainer):
 **ElasticSearch / Milvus 同样遵循 Repository 模式**
 
 ```python
-# infra_layer/adapters/out/search/repository/semantic_memory_es_repository.py
+# infra_layer/adapters/out/search/repository/foresight_es_repository.py
 from elasticsearch import AsyncElasticsearch
 from typing import List
 
-class SemanticMemoryESRepository:
-    """ElasticSearch 语义记忆仓储"""
+class ForesightESRepository:
+    """ElasticSearch 前瞻仓储"""
     
     def __init__(self, es_client: AsyncElasticsearch, index_name: str):
         self._es = es_client
@@ -1126,13 +1126,13 @@ class SemanticMemoryESRepository:
 **业务层调用搜索 Repository**
 
 ```python
-# memory_layer/retrievers/semantic_retriever.py
-from infra_layer.adapters.out.search.repository.semantic_memory_es_repository import SemanticMemoryESRepository
+# memory_layer/retrievers/foresight_retriever.py
+from infra_layer.adapters.out.search.repository.foresight_es_repository import ForesightESRepository
 
-class SemanticRetriever:
-    """语义检索器（业务逻辑层）"""
+class ForesightRetriever:
+    """前瞻检索器（业务逻辑层）"""
     
-    def __init__(self, search_repo: SemanticMemoryESRepository):
+    def __init__(self, search_repo: ForesightESRepository):
         # ✅ 依赖抽象，通过依赖注入获得 repository
         self._search_repo = search_repo
     
@@ -1156,7 +1156,7 @@ class MemoryHybridRepository(MemoryRepository):
     def __init__(
         self,
         mongo_repo: MemoryMongoRepository,
-        es_repo: SemanticMemoryESRepository
+        es_repo: ForesightESRepository
     ):
         self._mongo = mongo_repo
         self._es = es_repo
@@ -1175,8 +1175,8 @@ class MemoryHybridRepository(MemoryRepository):
         
         return memory_id
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """语义搜索：ES 查询 + MongoDB 补充详情"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """前瞻搜索：ES 查询 + MongoDB 补充详情"""
         # 1. ES 搜索得到相关 ID
         es_results = await self._es.search_by_text(query, top_k)
         memory_ids = [hit["_id"] for hit in es_results]

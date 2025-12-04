@@ -156,8 +156,8 @@ Agentic API 是 MemSys 的智能记忆系统接口，提供记忆存储和智能
 | time_range_days | integer | 否 | 365 | 时间范围天数 |
 | top_k | integer | 否 | 20 | 返回结果数量 |
 | retrieval_mode | string | 否 | rrf | 检索模式：rrf/embedding/bm25 |
-| data_source | string | 否 | episode | 数据源：episode/event_log/semantic_memory/profile |
-| current_time | string | 否 | - | 当前时间（YYYY-MM-DD格式，用于语义记忆有效期过滤） |
+| data_source | string | 否 | episode | 数据源：episode/event_log/foresight/profile |
+| current_time | string | 否 | - | 当前时间（YYYY-MM-DD格式，用于前瞻有效期过滤） |
 | radius | float | 否 | 0.6 | COSINE 相似度阈值，范围 [-1, 1] |
 
 **检索模式说明**：
@@ -170,7 +170,7 @@ Agentic API 是 MemSys 的智能记忆系统接口，提供记忆存储和智能
 
 - `episode`: 从 MemCell.episode 检索（默认）- 情景记忆
 - `event_log`: 从 event_log.atomic_fact 检索 - 原子事实
-- `semantic_memory`: 从语义记忆检索 - 抽象化的长期记忆
+- `foresight`: 从前瞻检索 - 抽象化的长期记忆
 - `profile`: 档案检索（仅需 user_id + group_id，query 可空）
 
 **记忆范围说明**：
@@ -185,7 +185,7 @@ Agentic API 是 MemSys 的智能记忆系统接口，提供记忆存储和智能
 - 范围为 [-1, 1]，默认 0.6
 - 只返回相似度 >= radius 的结果
 - 影响向量检索部分（embedding/rrf 模式）的结果质量
-- 对语义记忆和情景记忆有效（semantic_memory/episode）
+- 对前瞻和情景记忆有效（foresight/episode）
 - 事件日志使用 L2 距离暂不支持
 
 #### 响应格式
@@ -727,7 +727,7 @@ asyncio.run(agentic_retrieve())
 
 - `episode`（默认）：适合检索具体的对话内容和情景
 - `event_log`：适合检索原子级别的事实信息
-- `semantic_memory`：适合检索抽象的长期记忆
+- `foresight`：适合检索抽象的长期记忆
 - `profile`：适合获取用户或群组的档案信息
 
 

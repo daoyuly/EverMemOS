@@ -3,6 +3,9 @@ from elasticsearch.dsl import field as e_field
 from core.tenants.tenantize.oxm.es.tenant_aware_async_document import (
     TenantAwareAliasDoc,
 )
+from core.tenants.tenantize.oxm.es.tenant_aware_async_document import (
+    TenantAwareAliasDoc,
+)
 from core.oxm.es.analyzer import (
     completion_analyzer,
     lower_keyword_analyzer,
@@ -11,11 +14,11 @@ from core.oxm.es.analyzer import (
 )
 
 
-class SemanticMemoryDoc(TenantAwareAliasDoc("semantic-memory", number_of_shards=3)):
+class ForesightDoc(TenantAwareAliasDoc("foresight", number_of_shards=3)):
     """
-    语义记忆 Elasticsearch 文档
-
-    使用独立的 semantic-memory 索引。
+    前瞻 Elasticsearch 文档
+    
+    使用独立的 foresight 索引。
     """
 
     class CustomMeta:
@@ -31,7 +34,7 @@ class SemanticMemoryDoc(TenantAwareAliasDoc("semantic-memory", number_of_shards=
     timestamp = e_field.Date(required=True)
 
     # 核心内容字段
-    semantic = e_field.Text(
+    foresight = e_field.Text(
         required=True,
         analyzer=whitespace_lowercase_trim_stop_analyzer,
         search_analyzer=whitespace_lowercase_trim_stop_analyzer,
