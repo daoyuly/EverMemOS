@@ -7,30 +7,30 @@ from demo.tools.clear_all_data import clear_all_memories
 
 
 def load_conversation_data(file_path: str) -> tuple:
-    """从 JSON 文件加载对话数据
+    """Load conversation data from JSON file
     
     Returns:
         tuple: (messages, group_id, group_name)
     """
     data_file = Path(file_path)
     if not data_file.exists():
-        raise FileNotFoundError(f"数据文件不存在: {file_path}")
+        raise FileNotFoundError(f"Data file not found: {file_path}")
     
     with open(data_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
-    # 提取消息列表和元信息
+    # Extract message list and meta info
     messages = data.get('conversation_list', [])
     conversation_meta = data.get('conversation_meta', {})
     group_id = conversation_meta.get('group_id', 'unknown_group')
     group_name = conversation_meta.get('name', 'unknown')
     
-    # 为每条消息添加 group_id 和 group_name
+    # Add group_id and group_name to each message
     for msg in messages:
         msg['group_id'] = group_id
         msg['group_name'] = group_name
     
-    print(f"从 {file_path} 加载了 {len(messages)} 条消息")
+    print(f"Loaded {len(messages)} messages from {file_path}")
     print(f"group_id: {group_id}")
     print(f"group_name: {group_name}")
     
@@ -38,18 +38,18 @@ def load_conversation_data(file_path: str) -> tuple:
 
 
 async def test_v3_memorize_api():
-    """测试 V3 API 的 /memorize 接口（单条消息存储）"""
+    """Test V3 API /memorize endpoint (single message storage)"""
 
     await clear_all_memories()
     
     base_url = "http://localhost:8001" 
-    memorize_url = f"{base_url}/api/v3/agentic/memorize"  # 正确的路由路径
+    memorize_url = f"{base_url}/api/v3/agentic/memorize"  # Correct route path
     
     print("=" * 100)
-    print("🧪 测试 V3 API HTTP 接口 - 记忆存储")
+    print("🧪 Test V3 API HTTP Interface - Memory Storage")
     print("=" * 100)
     
-    # 加载真实对话数据
+    # Load real conversation data
     language = os.getenv("MEMORY_LANGUAGE", "en")
     if language == "zh":
         data_file = "data/assistant_chat_zh.json"
@@ -59,7 +59,7 @@ async def test_v3_memorize_api():
     try:
         test_messages, group_id, group_name = load_conversation_data(data_file)
     except FileNotFoundError as e:
-        print(f"❌ 错误: {e}")
+        print(f"❌ Error: {e}")
         return False
     
     profile_scene = "assistant"
@@ -81,7 +81,7 @@ async def test_v3_memorize_api():
         for idx, message in enumerate(test_messages, 1):
             print(f"[{idx}/{len(test_messages)}] {message['sender']}: {message['content'][:40]}...")
             
-            # 为每条消息添加 scene 字段
+            # Add scene field for each message
             message['scene'] = profile_scene
             
             try:
@@ -104,7 +104,7 @@ async def test_v3_memorize_api():
                         request_id = result.get("result", {}).get("request_id", "")
                         print(f"   🔄 Processing (request_id: {request_id[:8]}...)")
                     else:
-                        # 兼容旧版本或其他状态
+                        # Compatible with old versions or other statuses
                         total_accumulated += 1
                         print(f"   ⏳ Queued")
                 else:
@@ -118,7 +118,7 @@ async def test_v3_memorize_api():
             except httpx.ReadTimeout:
                 print(f"   ⚠ Timeout: Processing exceeded 500s")
                 print(f"      Skipping message and continuing...")
-                continue  # 跳过超时的消息，继续处理下一条
+                continue  # Skip timed out message, continue to next
             except Exception as e:
                 print(f"   ✗ Error: {type(e).__name__}: {e}")
                 import traceback
