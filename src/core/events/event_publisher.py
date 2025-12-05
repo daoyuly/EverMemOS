@@ -174,9 +174,7 @@ class ApplicationEventPublisher:
             logger.debug(f"事件 [{event_type_name}] 没有监听器，跳过发布")
             return
 
-        logger.debug(
-            f"发布事件 [{event_type_name}] (id={event.event_id})，共 {len(listeners)} 个监听器"
-        )
+        logger.debug(f"发布事件 [{event_type_name}]，共 {len(listeners)} 个监听器")
 
         # 创建所有监听器的协程任务
         async def safe_invoke(listener: EventListener) -> Optional[Exception]:

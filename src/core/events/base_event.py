@@ -7,7 +7,6 @@
 """
 
 import json
-import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from typing import Any, Dict, Type, TypeVar
@@ -29,13 +28,11 @@ class BaseEvent(ABC):
     并可选择性地重写 `event_type` 方法来自定义事件类型名称。
 
     基类提供以下功能：
-    - 自动生成事件ID (event_id)
     - 自动记录事件创建时间 (created_at)
     - JSON 序列化/反序列化
     - BSON 序列化/反序列化
 
     Attributes:
-        event_id: 事件唯一标识符，自动生成
         created_at: 事件创建时间（ISO 格式字符串），自动生成
 
     Example:
@@ -51,7 +48,6 @@ class BaseEvent(ABC):
     """
 
     # 基类字段，使用 field 提供默认值工厂
-    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     created_at: str = field(
         default_factory=lambda: to_iso_format(get_now_with_timezone())
     )
@@ -162,4 +158,4 @@ class BaseEvent(ABC):
 
     def __repr__(self) -> str:
         """返回对象的字符串表示"""
-        return f"{self.__class__.__name__}(event_id={self.event_id!r}, created_at={self.created_at!r})"
+        return f"{self.__class__.__name__}(created_at={self.created_at!r})"
