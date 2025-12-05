@@ -6,10 +6,11 @@ from fastapi import FastAPI
 from typing import Any
 
 from core.observation.logger import get_logger
-from core.di.utils import get_bean, get_all_subclasses, get_bean_by_type
+from core.di.utils import get_all_subclasses, get_bean_by_type
 from core.di.decorators import component
 from core.lifespan.lifespan_interface import LifespanProvider
 from core.oxm.es.doc_base import DocBase
+from core.oxm.es.es_utils import EsIndexInitializer
 from component.elasticsearch_client_factory import ElasticsearchClientFactory
 
 logger = get_logger(__name__)
@@ -29,7 +30,6 @@ class ElasticsearchLifespanProvider(LifespanProvider):
         """
         super().__init__(name, order)
         self._es_factory = None
-        self._es_client = None
 
     async def startup(self, app: FastAPI) -> Any:
         """
@@ -45,12 +45,12 @@ class ElasticsearchLifespanProvider(LifespanProvider):
 
         try:
             # 获取 Elasticsearch 客户端工厂
-            self._es_factory: ElasticsearchClientFactory = get_bean(
-                "elasticsearch_client_factory"
+            self._es_factory: ElasticsearchClientFactory = get_bean_by_type(
+                ElasticsearchClientFactory
             )
 
-            # 获取默认客户端
-            self._es_client = await self._es_factory.get_default_client()
+            # 注册一个默认的，主要是兼容旧代码，单个租户的情况
+            await self._es_factory.register_default_client()
 
             # 获取所有 DocBase 的子类 动态生成的类好像找不到不知道为什么
             all_doc_classes = get_all_subclasses(DocBase)
@@ -58,34 +58,21 @@ class ElasticsearchLifespanProvider(LifespanProvider):
             # 过滤出有效的文档类
             document_classes = []
             for doc_class in all_doc_classes:
-                if hasattr(doc_class, '_index') and hasattr(doc_class._index, '_name'):
-                    index_name = doc_class._index._name
-                    # 检查索引名称是否有效
-                    if index_name and index_name.strip():
-                        document_classes.append(doc_class)
-                        logger.info(
-                            "发现文档类: %s -> %s", doc_class.__name__, index_name
-                        )
-                    else:
-                        logger.warning(
-                            "跳过文档类 %s，索引名称为空", doc_class.__name__
-                        )
-                else:
-                    logger.debug("跳过文档类 %s，缺少索引配置", doc_class.__name__)
+                index_name = doc_class.get_index_name()
+                # 检查索引名称是否有效
+                document_classes.append(doc_class)
+                logger.info("发现文档类: %s -> %s", doc_class.__name__, index_name)
 
-            # 初始化索引
+            # 初始化索引（使用工具类，支持租户感知）
             if document_classes:
-                await self._es_client.initialize_indices(document_classes)
+                initializer = EsIndexInitializer()
+                await initializer.initialize_indices(document_classes)
             else:
                 logger.info("没有发现需要初始化的文档类")
-
-            # 初始化 elasticsearch_dsl 连接
-            self._es_factory.get_default_connection()
 
             logger.info("✅ Elasticsearch 连接初始化完成")
 
             return {
-                "client": self._es_client,
                 "factory": self._es_factory,
                 "document_classes": [cls.__name__ for cls in document_classes],
             }

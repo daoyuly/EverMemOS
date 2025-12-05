@@ -56,7 +56,7 @@ class RetrieveMemRequest:
     query: Optional[str] = None  # retrieve的时候
     retrieve_method: RetrieveMethod = field(default=RetrieveMethod.KEYWORD)
     current_time: Optional[str] = (
-        None  # 当前时间，用于过滤有效期内的语义记忆 happened_at cuurent_time的事件
+        None  # 当前时间，用于过滤有效期内的前瞻 happened_at cuurent_time的事件
     )
     radius: Optional[float] = None  # COSINE 相似度阈值（None 时使用默认值 0.6）
 

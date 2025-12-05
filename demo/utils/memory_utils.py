@@ -1,17 +1,17 @@
-"""共享工具函数模块 - 用于记忆提取和对话系统
+"""Shared Utility Module - For Memory Extraction and Chat System
 
-本模块提供公共的工具函数，供 extract_memory.py 和 chat_with_memory.py 共同使用。
+This module provides common utility functions shared by extract_memory.py and chat_with_memory.py.
 
-主要功能：
-- MongoDB 连接和初始化
-- MemCell 查询
-- 时间序列化工具
-- Prompt 语言设置
+Key Features:
+- MongoDB connection and initialization
+- MemCell queries
+- Time serialization tools
+- Prompt language settings
 
-V4 更新：
-- 删除了自定义检索策略（使用 src 中的 API）
-- 保留基础工具函数
-- 新增 Prompt 语言设置功能
+V4 Update:
+- Removed custom retrieval strategies (using API in src)
+- Retained basic utility functions
+- Added Prompt language setting functionality
 """
 
 import json
@@ -20,10 +20,10 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 from beanie import init_beanie
 
-# 导入项目中的文档模型
+# Import document models from the project
 from infra_layer.adapters.out.persistence.document.memory.memcell import (
     MemCell as DocMemCell,
 )
@@ -31,91 +31,91 @@ from demo.config import MongoDBConfig
 
 
 # ============================================================================
-# Prompt 语言设置
+# Prompt Language Settings
 # ============================================================================
 
 
 def set_prompt_language(language: str) -> None:
-    """设置记忆提取的 Prompt 语言
-    
-    通过设置环境变量 MEMORY_LANGUAGE 来控制 src/memory_layer/prompts 使用的语言。
-    这会影响所有记忆提取器（MemCell、Profile、Episode、Semantic）使用的 Prompt。
-    
+    """Set Prompt Language for Memory Extraction
+
+    Controls the language used in src/memory_layer/prompts by setting the MEMORY_LANGUAGE environment variable.
+    This affects Prompts used by all memory extractors (MemCell, Profile, Episode, Foresight).
+
     Args:
-        language: 语言代码，"zh" 或 "en"
-        
-    注意：
-        - 必须在导入 memory_layer 相关模块之前调用
-        - 建议在程序启动时立即调用
+        language: Language code, "zh" or "en"
+
+    Note:
+        - Must be called before importing memory_layer related modules
+        - Recommended to call immediately at program start
     """
     if language not in ["zh", "en"]:
-        print(f"[Warning] 不支持的语言 '{language}'，将使用默认语言 'en'")
+        print(f"[Warning] Unsupported language '{language}', using default 'en'")
         language = "en"
-    
+
     os.environ["MEMORY_LANGUAGE"] = language
-    print(f"[Prompt Language] 已设置为: {language} (影响所有记忆提取 Prompt)")
+    print(f"[Prompt Language] Set to: {language} (Affects all memory extraction Prompts)")
 
 
 def get_prompt_language() -> str:
-    """获取当前的 Prompt 语言设置
-    
+    """Get Current Prompt Language Setting
+
     Returns:
-        当前的 MEMORY_LANGUAGE 环境变量值，默认为 "en"
+        Current MEMORY_LANGUAGE environment variable value, defaults to "en"
     """
     return os.getenv("MEMORY_LANGUAGE", "en")
 
 
 # ============================================================================
-# MongoDB 相关工具
+# MongoDB Tools
 # ============================================================================
 
 
 async def ensure_mongo_beanie_ready(mongo_config: MongoDBConfig) -> None:
-    """初始化 MongoDB 和 Beanie 连接
+    """Initialize MongoDB and Beanie Connection
 
     Args:
-        mongo_config: MongoDB 配置对象
+        mongo_config: MongoDB configuration object
 
     Raises:
-        Exception: 如果连接失败
+        Exception: If connection fails
     """
-    # 设置环境变量供 Beanie 使用
+    # Set environment variable for Beanie use
     os.environ["MONGODB_URI"] = mongo_config.uri
 
-    # 创建 MongoDB 客户端并测试连接
-    client = AsyncIOMotorClient(mongo_config.uri)
+    # Create MongoDB client and test connection
+    client = AsyncMongoClient(mongo_config.uri)
     try:
         await client.admin.command('ping')
-        print(f"[MongoDB] ✅ 连接成功: {mongo_config.database}")
+        print(f"[MongoDB] ✅ Connected: {mongo_config.database}")
     except Exception as e:
-        print(f"[MongoDB] ❌ 连接失败: {e}")
+        print(f"[MongoDB] ❌ Connection failed: {e}")
         raise
 
-    # 初始化 Beanie 文档模型
+    # Initialize Beanie document models
     await init_beanie(
         database=client[mongo_config.database], document_models=[DocMemCell]
     )
 
 
 async def query_all_groups_from_mongodb() -> List[Dict[str, Any]]:
-    """查询所有群组 ID 及其记忆数量
+    """Query all group IDs and their memory counts
 
-    使用聚合管道统计每个群组的 MemCell 数量。
+    Uses aggregation pipeline to count MemCells per group.
 
     Returns:
-        群组列表，格式：[{"group_id": "xxx", "memcell_count": 76}, ...]
+        List of groups, format: [{"group_id": "xxx", "memcell_count": 76}, ...]
     """
-    # 使用聚合管道统计每个群组的记忆数量
+    # Use aggregation pipeline to count memories per group
     pipeline = [
-        {"$match": {"group_id": {"$ne": None}}},  # 过滤掉没有 group_id 的记录
+        {"$match": {"group_id": {"$ne": None}}},  # Filter records without group_id
         {"$group": {"_id": "$group_id", "count": {"$sum": 1}}},
-        {"$sort": {"_id": 1}},  # 按 group_id 排序
+        {"$sort": {"_id": 1}},  # Sort by group_id
     ]
 
-    # 获取 PyMongo/Motor 集合进行聚合查询
-    # get_pymongo_collection() 在 Beanie 中返回 Motor 集合（异步）
+    # Get PyMongo AsyncCollection for aggregation
+    # get_pymongo_collection() returns AsyncCollection in Beanie (async)
     collection = DocMemCell.get_pymongo_collection()
-    cursor = collection.aggregate(pipeline)
+    cursor = await collection.aggregate(pipeline)
     results = await cursor.to_list(length=None)
 
     groups = []
@@ -128,15 +128,15 @@ async def query_all_groups_from_mongodb() -> List[Dict[str, Any]]:
 async def query_memcells_by_group_and_time(
     group_id: str, start_date: datetime, end_date: datetime
 ) -> List[DocMemCell]:
-    """按群组和时间范围查询 MemCell
+    """Query MemCells by Group and Time Range
 
     Args:
-        group_id: 群组 ID
-        start_date: 开始日期
-        end_date: 结束日期
+        group_id: Group ID
+        start_date: Start date
+        end_date: End date
 
     Returns:
-        MemCell 文档对象列表
+        List of MemCell document objects
     """
     memcells = (
         await DocMemCell.find(
@@ -150,35 +150,34 @@ async def query_memcells_by_group_and_time(
 
 
 # ============================================================================
-# 时间序列化工具
+# Time Serialization Tools
 # ============================================================================
 
 
 def serialize_datetime(obj: Any) -> Any:
-    """递归序列化 datetime 对象为 ISO 格式字符串
+    """Recursively serialize datetime objects to ISO format strings
 
     Args:
-        obj: 要序列化的对象（可以是任意类型）
+        obj: Object to serialize (can be any type)
 
     Returns:
-        序列化后的对象
+        Serialized object
     """
-    # 如果已经是字符串，直接返回（避免处理已序列化的时间戳）
+    # If already string, return directly (avoid processing already serialized timestamps)
     if isinstance(obj, str):
         return obj
-    # datetime 对象转为 ISO 字符串
+    # Convert datetime object to ISO string
     elif isinstance(obj, datetime):
         return obj.isoformat()
-    # 递归处理字典
+    # Recursively process dict
     elif isinstance(obj, dict):
         return {k: serialize_datetime(v) for k, v in obj.items()}
-    # 递归处理列表
+    # Recursively process list
     elif isinstance(obj, list):
         return [serialize_datetime(item) for item in obj]
-    # 处理对象（转换 __dict__）
+    # Process object (convert __dict__)
     elif hasattr(obj, '__dict__'):
         return serialize_datetime(obj.__dict__)
-    # 其他类型直接返回
+    # Return other types directly
     else:
         return obj
-

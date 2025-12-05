@@ -1,10 +1,10 @@
-"""国际化文本定义 - 支持中英文双语
+"""Internationalization Text Definition - Supports Chinese and English
 
-本模块定义了对话系统所有界面文本的中英文版本。
+This module defines the Chinese and English versions of all interface texts for the dialog system.
 
-使用方法：
+Usage:
     from i18n_texts import I18nTexts
-    texts = I18nTexts("zh")  # 或 "en"
+    texts = I18nTexts("zh")  # or "en"
     print(texts.get("banner_title"))
 """
 
@@ -12,11 +12,11 @@ from typing import Dict, Any
 
 
 class I18nTexts:
-    """国际化文本管理器"""
+    """Internationalization Text Manager"""
 
-    # 所有文本的中英文映射
+    # Chinese-English mapping for all texts
     TEXTS: Dict[str, Dict[str, str]] = {
-        # ==================== 语言选择 ====================
+        # ==================== Language Selection ====================
         "language_selection_title": {
             "zh": "🌏  语言选择 / Language Selection",
             "en": "🌏  Language Selection / 语言选择",
@@ -28,11 +28,15 @@ class I18nTexts:
         "language_chinese": {"zh": "中文", "en": "Chinese (中文)"},
         "language_english": {"zh": "英文 (English)", "en": "English"},
         "language_selected": {"zh": "已选择语言", "en": "Language selected"},
+        "language_consistency_hint": {
+            "zh": "💡 提示：为获得最佳体验，建议记忆数据与选择的语言保持一致",
+            "en": "💡 Note: For best experience, memory data should match the selected language",
+        },
         "invalid_input_number": {
             "zh": "请输入有效的数字",
             "en": "Please enter a valid number",
         },
-        # ==================== 场景模式选择 ====================
+        # ==================== Scenario Mode Selection ====================
         "scenario_selection_title": {
             "zh": "🎯  场景模式选择",
             "en": "🎯  Scenario Mode Selection",
@@ -52,42 +56,76 @@ class I18nTexts:
             "en": "Multi-person chat with group memory-based conversation analysis",
         },
         "scenario_selected": {"zh": "已选择场景模式", "en": "Scenario mode selected"},
-        # ==================== 检索模式选择 ====================
+        # ==================== Retrieval Mode Selection ====================
         "retrieval_mode_selection_title": {
             "zh": "🔍  检索模式选择",
             "en": "🔍  Retrieval Mode Selection",
         },
         "retrieval_mode_prompt": {
-            "zh": "请选择检索模式 [1-2]",
-            "en": "Please select retrieval mode [1-2]",
+            "zh": "请选择检索模式 [1-4]",
+            "en": "Please select retrieval mode [1-4]",
         },
-        "retrieval_mode_lightweight": {"zh": "轻量级检索", "en": "Lightweight Retrieval"},
-        "retrieval_mode_lightweight_desc": {
-            "zh": "快速检索，适合 demo 数据或小批量数据",
-            "en": "Fast retrieval, suitable for demo or small-scale data",
+        "retrieval_mode_rrf": {"zh": "RRF 融合（推荐）", "en": "RRF Fusion (Recommended)"},
+        "retrieval_mode_rrf_desc": {
+            "zh": "Embedding + BM25 融合",
+            "en": "Embedding + BM25 fusion",
+        },
+        "retrieval_mode_embedding": {"zh": "纯向量检索", "en": "Embedding Only"},
+        "retrieval_mode_embedding_desc": {
+            "zh": "语义理解最强",
+            "en": "Best semantic understanding",
+        },
+        "retrieval_mode_bm25": {"zh": "纯 BM25 检索", "en": "BM25 Only"},
+        "retrieval_mode_bm25_desc": {
+            "zh": "关键词精确匹配",
+            "en": "Exact keyword matching",
         },
         "retrieval_mode_agentic": {"zh": "Agentic 检索", "en": "Agentic Retrieval"},
         "retrieval_mode_agentic_desc": {
-            "zh": "智能多轮检索，提升检索效果，适合大规模数据",
-            "en": "Multi-round intelligent retrieval, improves quality, suitable for large-scale data",
+            "zh": "LLM 引导的多轮检索（实验性）",
+            "en": "LLM-guided multi-round retrieval (experimental)",
         },
         "retrieval_mode_selected": {"zh": "已选择检索模式", "en": "Retrieval mode selected"},
-        "retrieval_mode_lightweight_note": {
-            "zh": "💡 轻量级检索：速度快，成本低，适合 demo 演示和快速测试",
-            "en": "💡 Lightweight: Fast and cost-effective, ideal for demos and quick tests",
+        "retrieval_mode_agentic_cost_warning": {
+            "zh": "⚠️  Agentic 检索将使用 LLM API，可能产生额外费用",
+            "en": "⚠️  Agentic retrieval uses LLM API, may incur additional costs",
         },
-        "retrieval_mode_agentic_note": {
-            "zh": "💡 Agentic 检索：质量高，包含多轮检索和 LLM 引导，适合生产环境和大规模数据",
-            "en": "💡 Agentic: High quality with multi-round retrieval and LLM guidance, ideal for production and large datasets",
+        "retrieval_mode_invalid_range": {
+            "zh": "请输入 1-4",
+            "en": "Please enter 1-4",
         },
-        # ==================== 横幅和欢迎 ====================
+        # ==================== Agentic Retrieval UI ====================
+        "agentic_retrieving": {
+            "zh": "正在检索记忆...",
+            "en": "Retrieving memories...",
+        },
+        "agentic_mode_rrf": {"zh": "RRF融合", "en": "RRF Fusion"},
+        "agentic_mode_embedding": {"zh": "纯向量", "en": "Embedding"},
+        "agentic_mode_bm25": {"zh": "纯BM25", "en": "BM25"},
+        "agentic_mode_agentic": {"zh": "Agentic", "en": "Agentic"},
+        "agentic_mode_agentic_fallback": {"zh": "Agentic(降级)", "en": "Agentic(fallback)"},
+        "agentic_llm_judgment": {"zh": "LLM 判断", "en": "LLM Judgment"},
+        "agentic_sufficient": {"zh": "充分", "en": "Sufficient"},
+        "agentic_insufficient": {"zh": "不充分", "en": "Insufficient"},
+        "agentic_multi_round": {"zh": "多轮检索", "en": "Multi-round"},
+        "agentic_single_round": {"zh": "单轮检索", "en": "Single-round"},
+        "agentic_generated_queries": {"zh": "生成查询", "en": "Generated queries"},
+        "agentic_round1_count": {"zh": "R1", "en": "R1"},
+        "agentic_round2_count": {"zh": "R2", "en": "R2"},
+        "agentic_items": {"zh": "条", "en": "items"},
+        "agentic_reasoning_hint": {
+            "zh": "💡 首轮检索到的记忆信息不够充分，LLM 生成了更精确的补充查询以获取更多相关记忆",
+            "en": "💡 First-round memories insufficient, LLM generated refined queries for more relevant memories",
+        },
+        "agentic_supplementary_queries": {"zh": "补充查询", "en": "Supplementary queries"},
+        # ==================== Banner and Welcome ====================
         "banner_title": {
             "zh": "🧠  EverMem 记忆对话助手",
             "en": "🧠  EverMem Memory-Enhanced Chat Assistant",
         },
         "banner_subtitle": {
-            "zh": "🤖 v1.0.0  ·  Memory-Enhanced Chat",
-            "en": "🤖 v1.0.0  ·  Memory-Enhanced Chat",
+            "zh": "🤖 v1.1.0  ·  Memory-Enhanced Chat",
+            "en": "🤖 v1.1.0  ·  Memory-Enhanced Chat",
         },
         "readline_available": {
             "zh": "支持方向键移动光标、删除字符，按 ↑↓ 浏览历史输入",
@@ -97,7 +135,7 @@ class I18nTexts:
             "zh": "安装 readline 模块以支持更好的输入体验",
             "en": "Install readline module for better input experience",
         },
-        # ==================== 群组选择 ====================
+        # ==================== Group Selection ====================
         "groups_available_title": {
             "zh": "📊  可用的群组对话",
             "en": "📊  Available Group Conversations",
@@ -126,7 +164,7 @@ class I18nTexts:
             "zh": "未选择群组，退出程序",
             "en": "No group selected, exiting program",
         },
-        # ==================== 会话初始化 ====================
+        # ==================== Session Initialization ====================
         "loading_group_data": {
             "zh": "正在加载群组 {name} 的数据...",
             "en": "Loading data for group {name}...",
@@ -167,7 +205,7 @@ class I18nTexts:
             "zh": "会话初始化失败: {error}",
             "en": "Session initialization failed: {error}",
         },
-        # ==================== 对话交互 ====================
+        # ==================== Chat Interaction ====================
         "chat_start_note": {
             "zh": "开始对话  |  输入 'help' 查看命令  |  输入 'exit' 退出",
             "en": "Start chatting  |  Type 'help' for commands  |  Type 'exit' to quit",
@@ -186,7 +224,7 @@ class I18nTexts:
             "zh": "对话处理失败: {error}",
             "en": "Chat processing failed: {error}",
         },
-        # ==================== 检索结果 ====================
+        # ==================== Retrieval Results ====================
         "retrieval_title": {
             "zh": "检索到 {total} 条记忆",
             "en": "Retrieved {total} memories",
@@ -196,9 +234,9 @@ class I18nTexts:
             "en": "(showing first {shown} items)",
         },
         "retrieval_complete": {"zh": "检索完成", "en": "Retrieval Complete"},
-        "retrieval_semantic": {
-            "zh": "使用语义相似度进行检索",
-            "en": "Using semantic similarity for retrieval",
+        "retrieval_foresight": {
+            "zh": "使用前瞻相似度进行检索",
+            "en": "Using foresight similarity for retrieval",
         },
         "retrieval_latency": {
             "zh": "检索耗时: {latency}ms",
@@ -213,7 +251,7 @@ class I18nTexts:
             "en": "Single-round retrieval",
         },
         "prompt_memory_episode": {"zh": "详情：{episode}", "en": "Details: {episode}"},
-        # ==================== 命令处理 ====================
+        # ==================== Command Processing ====================
         "cmd_help_title": {"zh": "📖  可用命令", "en": "📖  Available Commands"},
         "cmd_exit": {
             "zh": "exit       退出对话（自动保存历史记录）",
@@ -263,7 +301,7 @@ class I18nTexts:
             "zh": "检测到中断信号，正在保存对话历史...",
             "en": "Interrupt detected, saving conversation history...",
         },
-        # ==================== 结构化响应 ====================
+        # ==================== Structured Response ====================
         "response_reasoning_title": {
             "zh": "🧠  完整推理过程",
             "en": "🧠  Full Reasoning Process",
@@ -276,7 +314,7 @@ class I18nTexts:
         "response_references": {"zh": "引用", "en": "References"},
         "response_no_references": {"zh": "无", "en": "None"},
         "response_assistant_title": {"zh": "🤖 Assistant", "en": "🤖 Assistant"},
-        # ==================== 配置和连接 ====================
+        # ==================== Configuration and Connection ====================
         "config_api_key_missing": {
             "zh": "LLM_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY 未设置",
             "en": "LLM_API_KEY / OPENROUTER_API_KEY / OPENAI_API_KEY not set",
@@ -293,14 +331,16 @@ class I18nTexts:
             "zh": "MongoDB 初始化失败: {error}",
             "en": "MongoDB initialization failed: {error}",
         },
-        # ==================== 表格标题 ====================
+        # ==================== Table Headers ====================
         "table_header_index": {"zh": "#", "en": "#"},
         "table_header_group": {"zh": "Group", "en": "Group"},
         "table_header_name": {"zh": "Name", "en": "Name"},
         "table_header_count": {"zh": "Count", "en": "Count"},
-        # ==================== LLM Prompt (系统消息) ====================
+        # ==================== LLM Prompt (System Message) ====================
         "prompt_system_role_zh": {
             "zh": """你是记忆增强 AI 助手，可访问用户画像与历史对话。请用温和、合作、尊重的中文回答。
+
+⚠️ 语言要求：你必须始终使用中文回答，即使记忆内容包含其他语言。
 
 目标：
 - 基于记忆进行深度分析、推理和合理推测，给出有价值的结论与建议。
@@ -342,7 +382,9 @@ Schema：
   "confidence": "high|medium|low",
   "additional_notes": "补充说明、推测依据或建议（可选）"
 }""",
-            "en": """You are a memory-augmented AI assistant with access to user profiles and conversation history. Use a gentle, cooperative, respectful assistant tone to answer in English.
+            "en": """You are a memory-augmented AI assistant with access to user profiles and conversation history. Use a gentle, cooperative, respectful assistant tone.
+
+⚠️ LANGUAGE REQUIREMENT: You MUST always respond in Chinese (中文), even if memory content is in other languages.
 
 Goal:
 - Provide concise, actionable conclusions and suggestions based on memory-driven professional analysis and reasoning.
@@ -376,7 +418,9 @@ Schema:
 }""",
         },
         "prompt_system_role_en": {
-            "zh": """你是记忆增强 AI 助手，可访问用户画像与历史对话。请用温和、合作、尊重的助理语气。你必须始终用英文回答。
+            "zh": """你是记忆增强 AI 助手，可访问用户画像与历史对话。请用温和、合作、尊重的助理语气。
+
+⚠️ 语言要求：你必须始终使用英文 (English) 回答，即使记忆内容是中文或其他语言。
 
 目标：
 - 基于记忆进行深度分析、推理和合理推测，给出有价值的结论与建议。
@@ -418,7 +462,9 @@ Schema：
   "confidence": "high|medium|low",
   "additional_notes": "补充说明、推测依据或建议（可选）"
 }""",
-            "en": """You are a memory-augmented AI assistant with access to user profiles and conversation history. Use a gentle, cooperative, respectful assistant tone to answer in English.
+            "en": """You are a memory-augmented AI assistant with access to user profiles and conversation history. Use a gentle, cooperative, respectful assistant tone.
+
+⚠️ LANGUAGE REQUIREMENT: You MUST always respond in English, even if memory content is in Chinese or other languages.
 
 Goal:
 - Provide valuable conclusions and suggestions based on deep analysis, reasoning, and reasonable speculation from memories.
@@ -476,7 +522,7 @@ Schema:
         "prompt_memory_date": {"zh": "{date}", "en": "{date}"},
         "prompt_memory_subject": {"zh": "主题：{subject}", "en": "Topic: {subject}"},
         "prompt_memory_content": {"zh": "内容：{content}", "en": "Content: {content}"},
-        # ==================== 其他 ====================
+        # ==================== Others ====================
         "loading_label": {"zh": "加载", "en": "Loading"},
         "warning_label": {"zh": "警告", "en": "Warning"},
         "hint_label": {"zh": "提示", "en": "Hint"},
@@ -486,41 +532,41 @@ Schema:
     }
 
     def __init__(self, language: str = "zh"):
-        """初始化国际化文本管理器
+        """Initialize Internationalization Text Manager
 
         Args:
-            language: 语言代码，"zh" 或 "en"
+            language: Language code, "zh" or "en"
         """
         self.language = language if language in ["zh", "en"] else "zh"
 
     def get(self, key: str, **kwargs) -> str:
-        """获取指定键的文本
+        """Get text for specific key
 
         Args:
-            key: 文本键
-            **kwargs: 格式化参数
+            key: Text key
+            **kwargs: Formatting parameters
 
         Returns:
-            格式化后的文本
+            Formatted text
         """
         text_dict = self.TEXTS.get(key, {})
         text = text_dict.get(self.language, text_dict.get("zh", key))
 
-        # 如果有格式化参数，进行格式化
+        # If formatting parameters exist, format the text
         if kwargs:
             try:
                 text = text.format(**kwargs)
             except KeyError:
-                # 如果格式化失败，返回原文本
+                # If formatting fails, return original text
                 pass
 
         return text
 
     def set_language(self, language: str) -> None:
-        """设置语言
+        """Set language
 
         Args:
-            language: 语言代码，"zh" 或 "en"
+            language: Language code, "zh" or "en"
         """
         if language in ["zh", "en"]:
             self.language = language

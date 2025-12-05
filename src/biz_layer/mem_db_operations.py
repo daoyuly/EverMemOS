@@ -46,7 +46,6 @@ from infra_layer.adapters.out.persistence.document.memory.memcell import (
     DataTypeEnum,
 )
 from memory_layer.memory_extractor.profile_memory_extractor import ProjectInfo
-from biz_layer.conversation_data_repo import ConversationDataRepository
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
@@ -58,8 +57,8 @@ from common_utils.datetime_utils import (
     from_timestamp,
 )
 from core.observation.logger import get_logger
-from infra_layer.adapters.out.persistence.document.memory.semantic_memory_record import (
-    SemanticMemoryRecord,
+from infra_layer.adapters.out.persistence.document.memory.foresight_record import (
+    ForesightRecord,
 )
 from infra_layer.adapters.out.persistence.document.memory.event_log_record import (
     EventLogRecord,
@@ -293,7 +292,8 @@ def _convert_episode_memory_to_doc(
         keywords=getattr(episode_memory, 'keywords', None),
         linked_entities=getattr(episode_memory, 'linked_entities', None),
         memcell_event_id_list=getattr(episode_memory, 'memcell_event_id_list', None),
-        vector_model=getattr(episode_memory, 'vector_model', None),
+        vector_model=episode_memory.vector_model,
+        vector=episode_memory.vector,
         extend={
             "memory_type": episode_memory.memory_type.value,
             "ori_event_id": getattr(episode_memory, 'ori_event_id', None),
@@ -302,44 +302,42 @@ def _convert_episode_memory_to_doc(
     )
 
 
-def _convert_semantic_memory_to_doc(
-    semantic_memory: Any,
+def _convert_foresight_to_doc(
+    foresight: Any,
     parent_doc: EpisodicMemory,
     current_time: Optional[datetime] = None,
-) -> SemanticMemoryRecord:
+) -> ForesightRecord:
     """
-    将SemanticMemoryItem业务对象转换为统一语义记忆文档格式
+    将ForesightItem业务对象转换为统一前瞻文档格式
 
     Args:
-        semantic_memory: 业务层的SemanticMemoryItem对象
+        foresight: 业务层的ForesightItem对象
         parent_doc: 父情景记忆文档
         current_time: 当前时间
 
     Returns:
-        SemanticMemoryRecord: 数据库文档格式的语义记忆对象
+        ForesightRecord: 数据库文档格式的前瞻对象
     """
 
     if current_time is None:
         current_time = get_now_with_timezone()
 
-    return SemanticMemoryRecord(
-        user_id=getattr(semantic_memory, "user_id", None),
+    return ForesightRecord(
+        user_id=getattr(foresight, "user_id", None),
         user_name=getattr(
-            semantic_memory, "user_name", getattr(parent_doc, "user_name", None)
+            foresight, "user_name", getattr(parent_doc, "user_name", None)
         ),
-        content=semantic_memory.content,
+        content=foresight.content,
         parent_episode_id=str(parent_doc.event_id),
-        start_time=semantic_memory.start_time,
-        end_time=semantic_memory.end_time,
-        duration_days=semantic_memory.duration_days,
-        group_id=semantic_memory.group_id,
-        group_name=getattr(
-            semantic_memory, "group_name", getattr(parent_doc, "group_name", None)
-        ),
+        start_time=foresight.start_time,
+        end_time=foresight.end_time,
+        duration_days=foresight.duration_days,
+        group_id=parent_doc.group_id,
+        group_name=parent_doc.group_name,
         participants=parent_doc.participants,
-        vector=semantic_memory.embedding,
-        vector_model=getattr(semantic_memory, 'vector_model', None),
-        evidence=semantic_memory.evidence,
+        vector=foresight.vector,
+        vector_model=foresight.vector_model,
+        evidence=foresight.evidence,
         extend={},
     )
 
@@ -379,10 +377,8 @@ def _convert_event_log_to_docs(
             atomic_fact=fact,
             parent_episode_id=str(parent_doc.event_id),
             timestamp=parent_doc.timestamp or current_time,
-            group_id=getattr(event_log, "group_id", parent_doc.group_id),
-            group_name=getattr(
-                event_log, "group_name", getattr(parent_doc, "group_name", None)
-            ),
+            group_id=event_log.group_id,
+            group_name=event_log.group_name,
             participants=parent_doc.participants,
             vector=vector,
             vector_model=getattr(event_log, 'vector_model', None),
@@ -871,19 +867,19 @@ def _convert_memcell_to_document(
         email_fields = {}
         linkdoc_fields = {}
 
-        # 准备 semantic_memories（转为字典列表）
-        semantic_memories_list = None
-        if hasattr(memcell, 'semantic_memories') and memcell.semantic_memories:
-            semantic_memories_list = [
+        # 准备 foresight_memories（转为字典列表）
+        foresight_memories_list = None
+        if hasattr(memcell, 'foresight_memories') and memcell.foresight_memories:
+            foresight_memories_list = [
                 (
                     sm.to_dict()
                     if hasattr(sm, 'to_dict')
                     else (sm if isinstance(sm, dict) else None)
                 )
-                for sm in memcell.semantic_memories
+                for sm in memcell.foresight_memories
             ]
-            semantic_memories_list = [
-                sm for sm in semantic_memories_list if sm is not None
+            foresight_memories_list = [
+                sm for sm in foresight_memories_list if sm is not None
             ]
 
         # 准备 event_log（转为字典）
@@ -919,7 +915,7 @@ def _convert_memcell_to_document(
             keywords=memcell.keywords,
             linked_entities=memcell.linked_entities,
             episode=memcell.episode,
-            semantic_memories=semantic_memories_list,  # ✅ 添加语义记忆
+            foresight_memories=foresight_memories_list,  # ✅ 添加前瞻
             event_log=event_log_dict,  # ✅ 添加事件日志
             extend=(
                 extend_dict if extend_dict else None

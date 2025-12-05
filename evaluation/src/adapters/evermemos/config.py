@@ -14,7 +14,7 @@ class ExperimentConfig:
     num_conv: int = 10
 
     # MemCell extraction feature switches
-    enable_semantic_extraction: bool = False
+    enable_foresight_extraction: bool = False
     enable_clustering: bool = True
     enable_profile_extraction: bool = False
 

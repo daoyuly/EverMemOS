@@ -10,7 +10,6 @@ from typing import Optional, TypeVar, Generic, Type, List, Dict, Any
 from elasticsearch import AsyncElasticsearch
 from core.oxm.es.doc_base import DocBase
 from core.observation.logger import get_logger
-from core.di.utils import get_bean
 
 logger = get_logger(__name__)
 
@@ -40,7 +39,6 @@ class BaseRepository(ABC, Generic[T]):
         """
         self.model = model
         self.model_name = model.__name__
-        self._client: Optional[AsyncElasticsearch] = None
 
     # ==================== 客户端管理 ====================
 
@@ -51,28 +49,18 @@ class BaseRepository(ABC, Generic[T]):
         Returns:
             AsyncElasticsearch: 异步客户端实例
         """
-        if self._client is None:
-            try:
-                es_factory = get_bean("elasticsearch_client_factory")
-                client_wrapper = await es_factory.get_default_client()
-                self._client = client_wrapper.async_client
-            except Exception as e:
-                logger.error(
-                    "❌ 获取 Elasticsearch 客户端失败 [%s]: %s", self.model_name, e
-                )
-                raise
-        return self._client
+        return self.model.get_connection()
 
     def get_index_name(self) -> str:
         """
         获取索引名称
 
+        委托给模型类的 get_index_name 方法，确保所有获取索引名的逻辑统一。
+
         Returns:
             str: 索引别名
         """
-        if hasattr(self.model, '_index') and hasattr(self.model._index, '_name'):
-            return self.model._index._name
-        raise ValueError(f"文档类 {self.model_name} 没有正确的索引配置")
+        return self.model.get_index_name()
 
     # ==================== 基础 CRUD 模板方法 ====================
 
@@ -90,11 +78,6 @@ class BaseRepository(ABC, Generic[T]):
         try:
             client = await self.get_client()
             await document.save(using=client, refresh=refresh)
-            logger.debug(
-                "✅ 创建文档成功 [%s]: %s",
-                self.model_name,
-                getattr(document, 'meta', {}).get('id', 'unknown'),
-            )
             return document
         except Exception as e:
             logger.error("❌ 创建文档失败 [%s]: %s", self.model_name, e)
@@ -341,14 +324,7 @@ class BaseRepository(ABC, Generic[T]):
             client = await self.get_client()
 
             # 使用文档类的 init 方法创建索引
-            if hasattr(self.model, 'dest'):
-                index_name = self.model.dest()
-            else:
-                from common_utils.datetime_utils import get_now_with_timezone
-
-                now = get_now_with_timezone()
-                alias = self.get_index_name()
-                index_name = f"{alias}-{now.strftime('%Y%m%d%H%M%S%f')}"
+            index_name = self.model.dest()
 
             await self.model.init(index=index_name, using=client)
 

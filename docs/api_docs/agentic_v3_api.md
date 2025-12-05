@@ -156,8 +156,8 @@ Lightweight memory retrieval (Embedding + BM25 + RRF fusion)
 | time_range_days | integer | No | 365 | Time range in days |
 | top_k | integer | No | 20 | Number of results to return |
 | retrieval_mode | string | No | rrf | Retrieval mode: rrf/embedding/bm25 |
-| data_source | string | No | episode | Data source: episode/event_log/semantic_memory/profile |
-| current_time | string | No | - | Current time (YYYY-MM-DD format, for semantic memory validity filtering) |
+| data_source | string | No | episode | Data source: episode/event_log/foresight/profile |
+| current_time | string | No | - | Current time (YYYY-MM-DD format, for foresight validity filtering) |
 | radius | float | No | 0.6 | COSINE similarity threshold, range [-1, 1] |
 
 **Retrieval Mode Descriptions**:
@@ -170,7 +170,7 @@ Lightweight memory retrieval (Embedding + BM25 + RRF fusion)
 
 - `episode`: Retrieve from MemCell.episode (default) - episodic memory
 - `event_log`: Retrieve from event_log.atomic_fact - atomic facts
-- `semantic_memory`: Retrieve from semantic memory - abstracted long-term memory
+- `foresight`: Retrieve from foresight - abstracted long-term memory
 - `profile`: Profile retrieval (only requires user_id + group_id, query can be empty)
 
 **Memory Scope Descriptions**:
@@ -185,7 +185,7 @@ Lightweight memory retrieval (Embedding + BM25 + RRF fusion)
 - Range is [-1, 1], default 0.6
 - Only returns results with similarity >= radius
 - Affects result quality of vector retrieval part (embedding/rrf modes)
-- Effective for semantic memory and episodic memory (semantic_memory/episode)
+- Effective for foresight and episodic memory (foresight/episode)
 - Event log uses L2 distance, currently not supported
 
 #### Response Format
@@ -727,7 +727,7 @@ asyncio.run(agentic_retrieve())
 
 - `episode` (default): Suitable for retrieving specific conversation content and scenarios
 - `event_log`: Suitable for retrieving atomic-level fact information
-- `semantic_memory`: Suitable for retrieving abstract long-term memories
+- `foresight`: Suitable for retrieving abstract long-term memories
 - `profile`: Suitable for getting user or group profile information
 
 

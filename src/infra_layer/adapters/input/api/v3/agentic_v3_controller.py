@@ -192,25 +192,29 @@ class AgenticV3Controller(BaseController):
             # 4. 转换为 MemorizeRequest 对象并调用 memory_manager
             logger.info("开始处理记忆请求")
             memorize_request = await handle_conversation_format(memorize_input)
-            memories = await self.memory_manager.memorize(memorize_request)
+            request_id = await self.memory_manager.memorize(memorize_request)
 
             # 5. 返回统一格式的响应
-            memory_count = len(memories) if memories else 0
-            logger.info("处理记忆请求完成，保存了 %s 条记忆", memory_count)
-
-            # 优化返回信息，帮助用户理解运行状态
-            if memory_count > 0:
-                message = f"Extracted {memory_count} memories"
+            if request_id:
+                # 检测到边界，已提交到 Worker 队列异步处理
+                logger.info("记忆请求已提交: request_id=%s", request_id)
+                return {
+                    "status": ErrorStatus.OK.value,
+                    "message": "Memory extraction submitted",
+                    "result": {
+                        "request_id": request_id,
+                        "status_info": "processing",
+                    },
+                }
             else:
-                message = "Message queued, awaiting boundary detection"
-
+                # 未检测到边界，消息已累积
+                logger.info("消息已累积，等待边界检测")
             return {
                 "status": ErrorStatus.OK.value,
-                "message": message,
+                    "message": "Message queued, awaiting boundary detection",
                 "result": {
-                    "saved_memories": memories,
-                    "count": memory_count,
-                    "status_info": "accumulated" if memory_count == 0 else "extracted",
+                        "request_id": None,
+                        "status_info": "accumulated",
                 },
             }
 
@@ -264,13 +268,13 @@ class AgenticV3Controller(BaseController):
         - **data_source** (可选): 数据源
           * "episode": 从 MemCell.episode 检索（默认）
           * "event_log": 从 event_log.atomic_fact 检索
-          * "semantic_memory": 从语义记忆检索
+          * "foresight": 从前瞻检索
           * "profile": 仅需 user_id + group_id 的档案检索（query 可空）
-        - **current_time** (可选): 当前时间，YYYY-MM-DD格式，用于过滤有效期内的语义记忆（仅 data_source=semantic_memory 时有效）
+        - **current_time** (可选): 当前时间，YYYY-MM-DD格式，用于过滤有效期内的前瞻（仅 data_source=foresight 时有效）
         - **radius** (可选): COSINE 相似度阈值，范围 [-1, 1]，默认 0.6
           * 只返回相似度 >= radius 的结果
           * 影响向量检索部分（embedding/rrf 模式）的结果质量
-          * 对语义记忆和情景记忆有效（semantic_memory/episode），事件日志使用 L2 距离暂不支持
+          * 对前瞻和情景记忆有效（foresight/episode），事件日志使用 L2 距离暂不支持
         
         ## 返回格式：
         ```json
@@ -319,8 +323,19 @@ class AgenticV3Controller(BaseController):
 
             if not query and data_source != "profile":
                 raise ValueError("缺少必需参数：query")
+            
+            # 验证 data_source 参数（兼容旧参数名 memcell）
             if data_source == "memcell":
                 data_source = "episode"
+            
+            # 验证 data_source 是有效值
+            VALID_DATA_SOURCES = {"episode", "event_log", "foresight", "profile"}
+            if data_source not in VALID_DATA_SOURCES:
+                raise ValueError(
+                    f"无效的 data_source: '{data_source}'，"
+                    f"有效值: {', '.join(sorted(VALID_DATA_SOURCES))}"
+                )
+            
             if data_source == "profile":
                 if not user_id or not group_id:
                     raise ValueError(

@@ -250,7 +250,7 @@ class MemorizeRequest:
     group_name: Optional[str] = None
     current_time: Optional[datetime] = None
     # 可选的提取控制参数
-    enable_semantic_extraction: bool = True  # 是否提取语义记忆
+    enable_foresight_extraction: bool = True  # 是否提取前瞻
     enable_event_log_extraction: bool = True  # 是否提取事件日志
 
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from motor.motor_asyncio import AsyncIOMotorClientSession
+from pymongo.asynchronous.client_session import AsyncClientSession
 from bson import ObjectId
 from core.observation.logger import get_logger
 from core.di.decorators import repository
@@ -29,10 +29,7 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
     # ==================== 基础 CRUD 方法 ====================
 
     async def get_by_event_id(
-        self,
-        event_id: str,
-        user_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        self, event_id: str, user_id: str, session: Optional[AsyncClientSession] = None
     ) -> Optional[EpisodicMemory]:
         """
         根据事件ID和用户ID获取情景记忆
@@ -66,7 +63,7 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
         self,
         event_ids: List[str],
         user_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        session: Optional[AsyncClientSession] = None,
     ) -> Dict[str, EpisodicMemory]:
         """
         根据事件ID列表和用户ID批量获取情景记忆
@@ -99,10 +96,8 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
             query = {"_id": {"$in": object_ids}}
             if user_id:
                 query["user_id"] = user_id
-            
-            results = await self.model.find(
-                query, session=session
-            ).to_list()
+
+            results = await self.model.find(query, session=session).to_list()
 
             # 转换为字典，方便后续使用
             result_dict = {str(doc.id): doc for doc in results}
@@ -124,7 +119,7 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
         limit: Optional[int] = None,
         skip: Optional[int] = None,
         sort_desc: bool = True,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        session: Optional[AsyncClientSession] = None,
     ) -> List[EpisodicMemory]:
         """
         根据用户ID获取情景记忆列表
@@ -166,7 +161,7 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
     async def append_episodic_memory(
         self,
         episodic_memory: EpisodicMemory,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        session: Optional[AsyncClientSession] = None,
     ) -> Optional[EpisodicMemory]:
         """
         追加新的情景记忆
@@ -203,10 +198,7 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
             return None
 
     async def delete_by_event_id(
-        self,
-        event_id: str,
-        user_id: str,
-        session: Optional[AsyncIOMotorClientSession] = None,
+        self, event_id: str, user_id: str, session: Optional[AsyncClientSession] = None
     ) -> bool:
         """
         根据事件ID和用户ID删除情景记忆
@@ -247,7 +239,7 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
             return False
 
     async def delete_by_user_id(
-        self, user_id: str, session: Optional[AsyncIOMotorClientSession] = None
+        self, user_id: str, session: Optional[AsyncClientSession] = None
     ) -> int:
         """
         根据用户ID删除所有情景记忆
@@ -316,6 +308,54 @@ class EpisodicMemoryRawRepository(BaseRepository[EpisodicMemory]):
             return results
         except Exception as e:
             logger.error("❌ 根据时间范围查询 EpisodicMemory 失败: %s", e)
+            return []
+
+    async def find_by_filter_paginated(
+        self,
+        query_filter: Optional[Dict[str, Any]] = None,
+        skip: int = 0,
+        limit: int = 100,
+        sort_field: str = "created_at",
+        sort_desc: bool = False,
+    ) -> List[EpisodicMemory]:
+        """
+        根据过滤条件分页查询 EpisodicMemory，用于数据同步等场景
+
+        Args:
+            query_filter: 查询过滤条件，为 None 时查询全部
+            skip: 跳过数量
+            limit: 限制返回数量
+            sort_field: 排序字段，默认 created_at
+            sort_desc: 是否降序排序，默认False（升序）
+
+        Returns:
+            EpisodicMemory 列表
+        """
+        try:
+            # 构建查询
+            filter_dict = query_filter if query_filter else {}
+            query = self.model.find(filter_dict)
+
+            # 排序
+            if sort_desc:
+                query = query.sort(f"-{sort_field}")
+            else:
+                query = query.sort(sort_field)
+
+            # 分页
+            query = query.skip(skip).limit(limit)
+
+            results = await query.to_list()
+            logger.debug(
+                "✅ 分页查询 EpisodicMemory 成功: filter=%s, skip=%d, limit=%d, 找到 %d 条记录",
+                filter_dict,
+                skip,
+                limit,
+                len(results),
+            )
+            return results
+        except Exception as e:
+            logger.error("❌ 分页查询 EpisodicMemory 失败: %s", e)
             return []
 
 

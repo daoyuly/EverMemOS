@@ -22,7 +22,7 @@ async def run(
             "找到文档类: %s.%s", document_class.__module__, document_class.__name__
         )
 
-        doc_alias = getattr(getattr(document_class, "_index", object()), "_name", "")
+        doc_alias = document_class.get_index_name()
         logger.info("索引别名: %s", doc_alias)
 
         if "episodic-memory" in str(doc_alias):

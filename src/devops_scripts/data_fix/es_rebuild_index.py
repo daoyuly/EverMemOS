@@ -4,8 +4,6 @@ import traceback
 
 from elasticsearch.dsl import AsyncDocument
 
-from component.elasticsearch_client_factory import ElasticsearchClientFactory
-from core.di.utils import get_bean_by_type
 from core.observation.logger import get_logger
 from core.oxm.es.migration.utils import find_document_class_by_index_name, rebuild_index
 
@@ -21,17 +19,9 @@ async def run(index_name: str, close_old: bool, delete_old: bool) -> None:
         logger.info(
             "找到文档类: %s.%s", document_class.__module__, document_class.__name__
         )
-        logger.info(
-            "索引别名: %s",
-            getattr(getattr(document_class, "_index", object()), "_name", ""),
-        )
+        logger.info("索引别名: %s", document_class.get_index_name())
 
-        es_factory = get_bean_by_type(ElasticsearchClientFactory)
-        es_connect = es_factory.get_default_connection()
-
-        await rebuild_index(
-            document_class, es_connect, close_old=close_old, delete_old=delete_old
-        )
+        await rebuild_index(document_class, close_old=close_old, delete_old=delete_old)
     except Exception as exc:  # noqa: BLE001
         logger.error("重建索引失败: %s", exc)
         traceback.print_exc()

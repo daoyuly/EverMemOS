@@ -12,6 +12,7 @@ from elasticsearch.dsl import AsyncDocument
 from core.observation.logger import get_logger
 from core.di.utils import get_all_subclasses
 from core.oxm.es.doc_base import DocBase, get_index_ns
+from core.oxm.es.es_utils import is_abstract_doc_class
 
 logger = get_logger(__name__)
 
@@ -31,27 +32,19 @@ def find_document_class_by_index_name(index_name: str) -> Type[AsyncDocument]:
     Raises:
         ValueError: 找不到或找到多个匹配的文档类
     """
-    ns = get_index_ns()
-    expected_alias = f"{index_name}-{ns}" if ns else index_name
 
     all_doc_classes = get_all_subclasses(DocBase)
 
     matched_classes: list[Type[AsyncDocument]] = []
     for cls in all_doc_classes:
-        if hasattr(cls, "_index") and hasattr(cls._index, "_name"):
-            # hardcode一下
-            if (
-                cls._index._name == expected_alias
-                and cls.__name__ != "GeneratedAliasSupportDoc"
-            ):
-                matched_classes.append(cls)
+        if not is_abstract_doc_class(cls) and index_name in cls.get_index_name():
+            matched_classes.append(cls)
 
     if not matched_classes:
-        available_indexes = [
-            cls._index._name
-            for cls in all_doc_classes
-            if hasattr(cls, "_index") and hasattr(cls._index, "_name")
-        ]
+        import ipdb
+
+        ipdb.set_trace()
+        available_indexes = [cls.get_index_name() for cls in all_doc_classes]
         logger.error("找不到索引别名 '%s' 对应的文档类", index_name)
         logger.info("可用的索引别名: %s", ", ".join(available_indexes))
         raise ValueError(f"找不到索引别名 '{index_name}' 对应的文档类")
@@ -79,7 +72,6 @@ def find_document_class_by_index_name(index_name: str) -> Type[AsyncDocument]:
 
 async def rebuild_index(
     document_class: Type[AsyncDocument],
-    es_connect: Any,
     close_old: bool = False,
     delete_old: bool = False,
 ) -> None:
@@ -107,11 +99,8 @@ async def rebuild_index(
         raise ValueError("文档类 %s 必须有 dest() 方法" % document_class.__name__)
 
     # 获取索引信息
-    index_settings = getattr(document_class, '_index', None)
-    if not index_settings or not hasattr(index_settings, '_name'):
-        raise ValueError("文档类 %s 缺少必要的索引设置" % document_class.__name__)
-
-    alias_name = index_settings._name
+    alias_name = document_class.get_index_name()
+    es_connect = document_class._get_connection()
     pattern = document_class.PATTERN
     dest_index = document_class.dest()
 

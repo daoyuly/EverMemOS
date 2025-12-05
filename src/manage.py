@@ -15,10 +15,6 @@ nest_asyncio.apply()
 import typer
 from typer import Typer
 
-# 添加src目录到Python路径
-from import_parent_dir import add_parent_path
-
-add_parent_path(0)
 
 # 创建 Typer 应用
 cli = Typer(help="Memsys Backend 管理工具")
@@ -39,11 +35,17 @@ def setup_environment_and_app(env_file: str = ".env"):
     if _initialized:
         return
 
-    from common_utils.load_env import setup_environment
-    from application_startup import setup_all
+    # 添加src目录到Python路径
+    from import_parent_dir import add_parent_path
+
+    add_parent_path(0)
 
     # 加载环境变量
+    from common_utils.load_env import setup_environment
+
     setup_environment(load_env_file_name=env_file, check_env_var="GEMINI_API_KEY")
+
+    from application_startup import setup_all
 
     setup_all()
     _initialized = True
@@ -144,10 +146,7 @@ def shell(
     """
     setup_environment_and_app(env_file)
 
-    from app import app
     from core.observation.logger import get_logger
-    from core.di.utils import get_bean_by_type
-    from core.context.context_manager import ContextManager
 
     logger = get_logger(__name__)
 
@@ -202,6 +201,54 @@ def list_commands(
         typer.echo(f"  {cmd.name:<20} {help_text}"),
 
     typer.echo(f"\n使用环境文件: {env_file}")
+
+
+@cli.command()
+def tenant_init(
+    env_file: str = typer.Option(".env", "--env-file", help="指定要加载的环境变量文件")
+):
+    """
+    初始化特定租户的 MongoDB 和 Milvus 数据库
+
+    租户ID通过环境变量 TENANT_SINGLE_TENANT_ID 指定。
+    数据库连接配置从默认环境变量获取。
+
+    示例:
+        # 设置租户ID环境变量
+        export TENANT_SINGLE_TENANT_ID=tenant_001
+
+        # 执行初始化
+        python src/manage.py tenant-init
+
+        # 使用自定义环境文件
+        python src/manage.py tenant-init --env-file .env.production
+    """
+
+    # 先设置环境和应用
+    setup_environment_and_app(env_file)
+
+    from core.observation.logger import get_logger
+
+    logger = get_logger(__name__)
+
+    # 导入租户初始化模块
+    from core.tenants.init_tenant_all import run_tenant_init
+
+    try:
+        # 执行租户初始化（从环境变量读取租户ID）
+        success = asyncio.run(run_tenant_init())
+
+        # 根据结果设置退出码
+        if success:
+            logger.info("✅ 所有数据库初始化成功")
+            raise typer.Exit(0)
+        else:
+            logger.error("❌ 部分或全部数据库初始化失败")
+            raise typer.Exit(1)
+    except ValueError as e:
+        # 捕获租户ID未设置的错误
+        logger.error("❌ 错误: %s", str(e))
+        raise typer.Exit(1)
 
 
 if __name__ == '__main__':

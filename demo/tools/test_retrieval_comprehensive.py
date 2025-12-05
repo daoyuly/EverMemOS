@@ -1,16 +1,16 @@
-"""全面的记忆检索测试
+"""Comprehensive Memory Retrieval Test
 
-测试所有检索模式的组合：
-- 数据源：episode、event_log、semantic_memory
-- 记忆范围：personal、group、all
-- 检索模式：bm25、embedding、rrf
-- Profile 数据源：仅测试固定的 user_id + group_id 组合（不区分 memory_scope / 检索模式）
+Test all retrieval mode combinations:
+- Data Source: episode, event_log, foresight
+- Memory Scope: personal, group, all
+- Retrieval Mode: bm25, embedding, rrf
+- Profile Data Source: Only test fixed user_id + group_id combination (memory_scope / retrieval mode not applicable)
 
-使用方法：
-    # 确保 API 服务器已启动
+Usage:
+    # Ensure API server is started
     uv run python src/bootstrap.py src/run.py --port 8001
     
-    # 在另一个终端运行测试
+    # Run test in another terminal
     uv run python src/bootstrap.py demo/tools/test_retrieval_comprehensive.py
 """
 
@@ -18,30 +18,38 @@ import asyncio
 import httpx
 from typing import List, Dict, Any
 from datetime import datetime
+import time
 
 
 class RetrievalTester:
-    """全面的检索测试器"""
+    """Comprehensive Retrieval Tester"""
     
     def __init__(self, base_url: str = "http://localhost:8001"):
-        """初始化测试器
+        """Initialize Tester
         
         Args:
-            base_url: API 服务器地址
+            base_url: API server address
         """
         self.base_url = base_url
         self.retrieve_url = f"{base_url}/api/v3/agentic/retrieve_lightweight"
         
-        # 测试配置
-        self.data_sources = ["episode", "event_log", "semantic_memory", "profile"]
+        # Test Configuration
+        self.data_sources = ["episode", "event_log", "foresight", "profile"]
         self.memory_scopes = ["personal", "group"]
         self.retrieval_modes = ["embedding", "bm25", "rrf"]
         
-        # 测试结果统计
+        # Test Results Statistics
         self.total_tests = 0
         self.successful_tests = 0
         self.failed_tests = 0
         self.test_results = []
+        
+        # Timing Statistics
+        self.start_time = None
+        self.end_time = None
+        self.total_request_time = 0.0  # Accumulated request time
+        self.max_latency = 0.0  # Max latency
+        self.min_latency = float('inf')  # Min latency
     
     async def test_retrieval(
         self,
@@ -55,24 +63,27 @@ class RetrievalTester:
         current_time: str = None,
         allow_empty: bool = False,
     ) -> Dict[str, Any]:
-        """执行单次检索测试
+        """Execute single retrieval test
         
         Args:
-            query: 查询文本
-            data_source: 数据源（episode/event_log/semantic_memory/profile）
-            memory_scope: 记忆范围（personal/group）
-            retrieval_mode: 检索模式（embedding/bm25/rrf）
-            user_id: 用户ID
-            group_id: 群组ID
-            top_k: 返回结果数量
-            current_time: 当前时间（仅对 semantic_memory 有效）
+            query: Query text
+            data_source: Data source (episode/event_log/foresight/profile)
+            memory_scope: Memory scope (personal/group)
+            retrieval_mode: Retrieval mode (embedding/bm25/rrf)
+            user_id: User ID
+            group_id: Group ID
+            top_k: Number of results
+            current_time: Current time (valid only for foresight)
             
         Returns:
-            测试结果字典
+            Test result dictionary
         """
         self.total_tests += 1
         
-        # 构建请求参数
+        # Record single request start time
+        request_start_time = time.time()
+        
+        # Build request payload
         payload = {
             "query": query,
             "user_id": user_id,
@@ -82,8 +93,8 @@ class RetrievalTester:
             "retrieval_mode": retrieval_mode,
         }
         
-        # 添加可选参数
-        if current_time and data_source == "semantic_memory":
+        # Add optional parameters
+        if current_time and data_source == "foresight":
             payload["current_time"] = current_time
         
         test_name = f"{data_source}_{memory_scope}_{retrieval_mode}"
@@ -94,19 +105,28 @@ class RetrievalTester:
                 response.raise_for_status()
                 result = response.json()
                 
+                # Calculate single request elapsed time
+                request_elapsed = (time.time() - request_start_time) * 1000  # Convert to ms
+                self.total_request_time += request_elapsed
+                
                 if result.get("status") == "ok":
                     memories = result.get("result", {}).get("memories", [])
                     metadata = result.get("result", {}).get("metadata", {})
                     latency = metadata.get("total_latency_ms", 0)
                     
+                    # Update max/min latency
+                    if latency > 0:
+                        self.max_latency = max(self.max_latency, latency)
+                        self.min_latency = min(self.min_latency, latency)
+                    
                     if len(memories) == 0:
                         if allow_empty:
                             self.successful_tests += 1
-                            info_msg = f"{test_name}: 允许空结果（耗时 {latency:.2f}ms）"
+                            info_msg = f"{test_name}: Allowed empty result (took {latency:.2f}ms)"
                             print(f"  ✅ {info_msg}")
                             empty_result = {
                                 "test_name": test_name,
-                                "status": "✅ 成功",
+                                "status": "✅ Success",
                                 "query": query,
                                 "data_source": data_source,
                                 "retrieval_mode": retrieval_mode,
@@ -117,13 +137,13 @@ class RetrievalTester:
                                 "note": "allow_empty",
                             }
                             return empty_result
-                        # 将 0 条结果视为失败，方便定位问题
+                        # Treat 0 results as failure for easier debugging
                         self.failed_tests += 1
-                        warning_msg = f"{test_name}: 返回 0 条记忆（耗时 {latency:.2f}ms）"
+                        warning_msg = f"{test_name}: Returned 0 memories (took {latency:.2f}ms)"
                         print(f"  ⚠️ {warning_msg}")
                         return {
                             "test_name": test_name,
-                            "status": "⚠️ 空结果",
+                            "status": "⚠️ Empty Result",
                             "query": query,
                             "data_source": data_source,
                             "retrieval_mode": retrieval_mode,
@@ -136,27 +156,28 @@ class RetrievalTester:
                     self.successful_tests += 1
                     test_result = {
                         "test_name": test_name,
-                        "status": "✅ 成功",
+                        "status": "✅ Success",
                         "query": query,
                         "data_source": data_source,
                         "retrieval_mode": retrieval_mode,
                         "count": len(memories),
                         "latency_ms": latency,
+                        "request_time_ms": request_elapsed,  # Add full request time
                         "metadata": metadata,
-                        "memories": memories[:3],  # 只保存前3条
+                        "memories": memories[:3],  # Only save first 3
                     }
                     
-                    # 打印分数（前3条）
+                    # Print scores (first 3)
                     score_info = ""
                     scores = [f"{m.get('score', 0):.4f}" for m in memories[:3]]
-                    score_info = f"，分数: [{', '.join(scores)}]"
+                    score_info = f", scores: [{', '.join(scores)}]"
                     
-                    print(f"  ✅ {test_name}: 找到 {len(memories)} 条记忆，耗时 {latency:.2f}ms{score_info}")
+                    print(f"  ✅ {test_name}: Found {len(memories)} memories, API took {latency:.2f}ms, Total took {request_elapsed:.2f}ms{score_info}")
                     
                     if data_source == "profile" and memories:
                         profile_entry = memories[0]
                         profile_data = profile_entry.get("profile") or {}
-                        print("    👤 Profile 详情（第一条样例）:")
+                        print("    👤 Profile Details (First Sample):")
                         print(
                             f"      user_id={profile_entry.get('user_id')}, "
                             f"group_id={profile_entry.get('group_id')}, "
@@ -167,7 +188,7 @@ class RetrievalTester:
                         summary_text = profile_data.get("summary") or profile_data.get("output_reasoning")
                         if summary_text:
                             short_summary = summary_text[:80] + ("..." if len(summary_text) > 80 else "")
-                            print(f"      摘要: {short_summary}")
+                            print(f"      Summary: {short_summary}")
                         interests = profile_data.get("interests") or []
                         if interests:
                             interest_names = ", ".join(
@@ -178,33 +199,33 @@ class RetrievalTester:
                                 ]
                             )
                             if interest_names:
-                                print(f"      兴趣: {interest_names}")
+                                print(f"      Interests: {interest_names}")
                     
                     return test_result
                 else:
                     self.failed_tests += 1
-                    error_msg = result.get('message', '未知错误')
-                    print(f"  ❌ {test_name}: 检索失败 - {error_msg}")
+                    error_msg = result.get('message', 'Unknown error')
+                    print(f"  ❌ {test_name}: Retrieval failed - {error_msg}")
                     return {
                         "test_name": test_name,
-                        "status": "❌ 失败",
+                        "status": "❌ Failed",
                         "error": error_msg,
                     }
                     
         except httpx.ConnectError:
             self.failed_tests += 1
-            print(f"  ❌ {test_name}: 无法连接到 API 服务器")
+            print(f"  ❌ {test_name}: Cannot connect to API server")
             return {
                 "test_name": test_name,
-                "status": "❌ 连接失败",
-                "error": "无法连接到 API 服务器",
+                "status": "❌ Connection Failed",
+                "error": "Cannot connect to API server",
             }
         except Exception as e:
             self.failed_tests += 1
-            print(f"  ❌ {test_name}: 异常 - {e}")
+            print(f"  ❌ {test_name}: Exception - {e}")
             return {
                 "test_name": test_name,
-                "status": "❌ 异常",
+                "status": "❌ Exception",
                 "error": str(e),
             }
     
@@ -217,36 +238,40 @@ class RetrievalTester:
         query_overrides: Dict[str, str] | None = None,
         profile_group_id: str | None = None,
     ):
-        """运行全面的检索测试
+        """Run Comprehensive Retrieval Test
         
         Args:
-            query: 查询文本
-            user_id: 用户ID
-            group_id: 群组ID
-            current_time: 当前时间（YYYY-MM-DD格式）
+            query: Query text
+            user_id: User ID
+            group_id: Group ID
+            current_time: Current time (YYYY-MM-DD)
         """
+        # Record test start time
+        if self.start_time is None:
+            self.start_time = time.time()
+        
         print("\n" + "="*80)
-        print(f"🧪 开始全面检索测试")
-        print(f"   查询: {query}")
-        print(f"   用户ID: {user_id}")
-        print(f"   群组ID: {group_id or '无'}")
-        print(f"   当前时间: {current_time or '无'}")
+        print(f"🧪 Starting Comprehensive Retrieval Test")
+        print(f"   Query: {query}")
+        print(f"   User ID: {user_id}")
+        print(f"   Group ID: {group_id or 'None'}")
+        print(f"   Current Time: {current_time or 'None'}")
         print("="*80)
         
-        # 遍历所有组合
+        # Iterate through all combinations
         query_overrides = query_overrides or {}
         for data_source in self.data_sources:
-            print(f"\n📊 数据源: {data_source}")
+            print(f"\n📊 Data Source: {data_source}")
             print("-"*80)
             
             if data_source == "profile":
                 profile_gid = profile_group_id or group_id
                 if not profile_gid:
-                    print("  ⚠️ 跳过 profile 测试：缺少 group_id")
+                    print("  ⚠️ Skipping profile test: missing group_id")
                     continue
                 
                 effective_query = query_overrides.get(data_source, query)
-                print("\n  📁 记忆范围: user_id + group_id（固定）")
+                print("\n  📁 Memory Scope: user_id + group_id (Fixed)")
                 result = await self.test_retrieval(
                     query=effective_query or "",
                     data_source="profile",
@@ -266,7 +291,7 @@ class RetrievalTester:
                 if memory_scope == "personal":
                     user_id = "user_001"
                     group_id = "chat_user_001_assistant"
-                print(f"\n  📁 记忆范围: {memory_scope}")
+                print(f"\n  📁 Memory Scope: {memory_scope}")
                 
                 for retrieval_mode in self.retrieval_modes:
                     effective_query = query_overrides.get(data_source, query)
@@ -274,7 +299,7 @@ class RetrievalTester:
                     if data_source == "profile":
                         effective_group_id = profile_group_id or group_id
                         if effective_group_id is None:
-                            print("  ⚠️ 跳过 profile 测试：缺少 group_id")
+                            print("  ⚠️ Skipping profile test: missing group_id")
                             continue
                     result = await self.test_retrieval(
                         query=effective_query,
@@ -287,66 +312,81 @@ class RetrievalTester:
                     )
                     self.test_results.append(result)
                     
-                    # 短暂延迟，避免请求过快
+                    # Short delay to avoid hitting rate limits
     
     def print_summary(self):
-        """打印测试总结"""
-        print("\n" + "="*80)
-        print("📊 测试总结")
-        print("="*80)
-        print(f"总测试数: {self.total_tests}")
-        print(f"成功: {self.successful_tests} ✅")
-        print(f"失败: {self.failed_tests} ❌")
-        print(f"成功率: {(self.successful_tests/self.total_tests*100):.1f}%")
+        """Print Test Summary"""
+        # Record test end time
+        if self.end_time is None:
+            self.end_time = time.time()
         
-        # 按数据源分组统计
-        print("\n📈 按数据源分组:")
+        total_elapsed = self.end_time - self.start_time if self.start_time else 0
+        
+        print("\n" + "="*80)
+        print("📊 Test Summary")
+        print("="*80)
+        print(f"Total Tests: {self.total_tests}")
+        print(f"Success: {self.successful_tests} ✅")
+        print(f"Failed: {self.failed_tests} ❌")
+        print(f"Success Rate: {(self.successful_tests/self.total_tests*100):.1f}%")
+        
+        # ⏱️ Timing Statistics
+        print("\n⏱️  Performance Stats:")
+        print(f"  Total Test Time: {total_elapsed:.2f}s")
+        print(f"  Total Request Time: {self.total_request_time/1000:.2f}s")
+        print(f"  Avg Request Time: {self.total_request_time/self.total_tests:.2f}ms" if self.total_tests > 0 else "  Avg Request Time: N/A")
+        print(f"  Max API Latency: {self.max_latency:.2f}ms" if self.max_latency > 0 else "  Max API Latency: N/A")
+        print(f"  Min API Latency: {self.min_latency:.2f}ms" if self.min_latency != float('inf') else "  Min API Latency: N/A")
+        
+        # Stats by Data Source
+        print("\n📈 By Data Source:")
         for data_source in self.data_sources:
             source_results = [r for r in self.test_results if r.get("data_source") == data_source]
-            success = len([r for r in source_results if r.get("status") == "✅ 成功"])
+            success = len([r for r in source_results if r.get("status") == "✅ Success"])
             total = len(source_results)
             avg_count = sum(r.get("count", 0) for r in source_results if r.get("count")) / total if total > 0 else 0
-            print(f"  {data_source}: {success}/{total} 成功，平均返回 {avg_count:.1f} 条记忆")
+            avg_latency = sum(r.get("latency_ms", 0) for r in source_results if r.get("latency_ms")) / total if total > 0 else 0
+            print(f"  {data_source}: {success}/{total} success, avg {avg_count:.1f} items, avg latency {avg_latency:.2f}ms")
         
-        # 按检索模式分组统计
-        print("\n🔍 按检索模式分组:")
+        # Stats by Retrieval Mode
+        print("\n🔍 By Retrieval Mode:")
         for mode in self.retrieval_modes:
             mode_results = [r for r in self.test_results if r.get("retrieval_mode") == mode]
-            success = len([r for r in mode_results if r.get("status") == "✅ 成功"])
+            success = len([r for r in mode_results if r.get("status") == "✅ Success"])
             total = len(mode_results)
             avg_latency = sum(r.get("latency_ms", 0) for r in mode_results if r.get("latency_ms")) / total if total > 0 else 0
-            print(f"  {mode}: {success}/{total} 成功，平均耗时 {avg_latency:.2f}ms")
+            print(f"  {mode}: {success}/{total} success, avg latency {avg_latency:.2f}ms")
         
-        # 按记忆范围分组统计
-        print("\n📁 按记忆范围分组:")
+        # Stats by Memory Scope
+        print("\n📁 By Memory Scope:")
         for scope in self.memory_scopes:
             scope_results = [r for r in self.test_results if r.get("memory_scope") == scope]
-            success = len([r for r in scope_results if r.get("status") == "✅ 成功"])
+            success = len([r for r in scope_results if r.get("status") == "✅ Success"])
             total = len(scope_results)
             avg_count = sum(r.get("count", 0) for r in scope_results if r.get("count")) / total if total > 0 else 0
-            print(f"  {scope}: {success}/{total} 成功，平均返回 {avg_count:.1f} 条记忆")
+            print(f"  {scope}: {success}/{total} success, avg returned {avg_count:.1f} items")
         
-        # 失败的测试详情
-        failed_results = [r for r in self.test_results if r.get("status") != "✅ 成功"]
+        # Failed Tests Details
+        failed_results = [r for r in self.test_results if r.get("status") != "✅ Success"]
         if failed_results:
-            print("\n❌ 失败的测试:")
+            print("\n❌ Failed Tests:")
             for r in failed_results:
-                print(f"  - {r.get('test_name')}: {r.get('error', '未知错误')}")
+                print(f"  - {r.get('test_name')}: {r.get('error', 'Unknown error')}")
     
     def export_results(self, output_file: str = "demo/results/retrieval_test_results.json"):
-        """导出测试结果到 JSON 文件
+        """Export test results to JSON file
         
         Args:
-            output_file: 输出文件路径
+            output_file: Output file path
         """
         import json
         from pathlib import Path
         
-        # 确保输出目录存在
+        # Ensure output directory exists
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # 构建导出数据
+        # Add timing info to export data
         export_data = {
             "test_time": datetime.now().isoformat(),
             "summary": {
@@ -354,6 +394,11 @@ class RetrievalTester:
                 "successful_tests": self.successful_tests,
                 "failed_tests": self.failed_tests,
                 "success_rate": f"{(self.successful_tests/self.total_tests*100):.1f}%" if self.total_tests > 0 else "0%",
+                "total_elapsed_seconds": round(self.end_time - self.start_time, 2) if self.start_time and self.end_time else 0,
+                "total_request_time_ms": round(self.total_request_time, 2),
+                "avg_request_time_ms": round(self.total_request_time / self.total_tests, 2) if self.total_tests > 0 else 0,
+                "max_latency_ms": round(self.max_latency, 2) if self.max_latency > 0 else 0,
+                "min_latency_ms": round(self.min_latency, 2) if self.min_latency != float('inf') else 0,
             },
             "test_results": self.test_results,
         }
@@ -361,144 +406,164 @@ class RetrievalTester:
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
         
-        print(f"\n💾 测试结果已保存到: {output_file}")
+        print(f"\n💾 Test results saved to: {output_file}")
 
 
 async def main():
-    """主测试函数"""
+    """Main Test Function"""
+    
+    # Record overall test start time
+    overall_start_time = time.time()
     
     print("="*80)
-    print("🧪 全面的记忆检索测试")
+    print("🧪 Comprehensive Memory Retrieval Test")
     print("="*80)
-    print("\n本测试将系统地测试所有检索模式的组合：")
-    print("  - 数据源: episode, event_log, semantic_memory（全量 3×3×3 组合）")
-    print("  - Profile 数据源: 仅固定 user_id + group_id 的 direct 检索")
-    print("  - 检索模式: embedding, bm25, rrf（仅适用于非 profile 数据源）")
-    print(f"\n总测试数: 3 × 3 × 3 + profile(1) = 28 种组合（profile 若缺少 group_id 将跳过）")
-    print("\n⚠️  请确保 API 服务器已启动: uv run python src/bootstrap.py src/run.py --port 8001")
-    print("\n按 Enter 继续...")
+    print("\nThis test will systematically test all retrieval mode combinations:")
+    print("  - Data Source: episode, event_log, foresight (Full 3×3×3 combination)")
+    print("  - Profile Data Source: Only fixed user_id + group_id direct retrieval")
+    print("  - Retrieval Mode: embedding, bm25, rrf (Only applicable to non-profile data sources)")
+    print(f"\nTotal Tests: 3 × 3 × 3 + profile(1) = 28 combinations (Profile skipped if missing group_id)")
+    print("\n⚠️  Please ensure API server is started: uv run python src/bootstrap.py src/run.py --port 8001")
+    print("\nPress Enter to continue...")
     input()
     
-    # 创建测试器
+    # Create Tester
     tester = RetrievalTester()
     
-    # ========== 测试 1: 个人记忆查询 ==========
+    # ========== Test 1: Personal Memory Query ==========
     print("\n" + "🔬"*40)
-    print("测试场景 1: 个人记忆查询")
+    print("Test Scenario 1: Personal Memory Query")
     print("🔬"*40)
+    test1_start = time.time()
     
     await tester.run_comprehensive_test(
-        query="北京",
-        user_id="user_001",  # 使用实际数据库中的 user_id
-        group_id=None,  # 不指定 group_id
-        current_time=None,  # 不传 current_time,避免过滤掉已过期的群组语义记忆
+        query="Sports",
+        user_id="user_001",  # Use actual user_id in DB
+        group_id=None,  # Do not specify group_id
+        current_time=None,  # No current_time to avoid filtering expired group foresight
         query_overrides={
-            # "event_log": "Beijing travel and food recommendation",  # 注释掉英文查询
+            # "event_log": "Beijing travel and food recommendation",  # Commented out English query
             "profile": "profile summary",
         },
         profile_group_id="chat_user_001_assistant",
     )
+    test1_elapsed = time.time() - test1_start
+    print(f"\n⏱️  Scenario 1 Duration: {test1_elapsed:.2f}s")
     
-    # ========== 测试 2: 群组记忆查询 ==========
+    # ========== Test 2: Group Memory Query ==========
     print("\n" + "🔬"*40)
-    print("测试场景 2: 群组记忆查询")
+    print("Test Scenario 2: Group Memory Query")
     print("🔬"*40)
+    test2_start = time.time()
     
     await tester.run_comprehensive_test(
-        query="北京",
-        user_id="user_001",  # 使用实际数据库中的 user_id
-        group_id="chat_user_001_assistant",  # 使用实际数据库中的 group_id
-        current_time=None,  # 不传 current_time,避免过滤掉已过期的群组语义记忆
+        query="Sports",
+        user_id="user_001",  # Use actual user_id in DB
+        group_id="chat_user_001_assistant",  # Use actual group_id in DB
+        current_time=None,  # No current_time to avoid filtering expired group foresight
         query_overrides={
-            # "event_log": "Beijing food and travel",  # 注释掉英文查询
+            # "event_log": "Beijing food and travel",  # Commented out English query
             "profile": "profile summary",
         },
         profile_group_id="chat_user_001_assistant",
     )
+    test2_elapsed = time.time() - test2_start
+    print(f"\n⏱️  Scenario 2 Duration: {test2_elapsed:.2f}s")
     
-    # ========== 测试 3: 语义记忆专项测试（有效期过滤） ==========
+    # ========== Test 3: Foresight Specific Test (Validity Filtering) ==========
     print("\n" + "🔬"*40)
-    print("测试场景 3: 语义记忆有效期过滤")
+    print("Test Scenario 3: Foresight Validity Filtering")
     print("🔬"*40)
+    test3_start = time.time()
     
-    # 测试当前有效的语义记忆
-    print("\n  📅 子测试 3.1: 检索当前有效的语义记忆")
+    # Test currently valid foresight
+    print("\n  📅 Sub-test 3.1: Retrieve currently valid foresight")
     result_current = await tester.test_retrieval(
-        query="北京",
-        data_source="semantic_memory",
+        query="Sports",
+        data_source="foresight",
         memory_scope="personal",
         retrieval_mode="rrf",
-        user_id="user_001",  # 使用实际数据库中的 user_id
+        user_id="user_001",  # Use actual user_id in DB
         current_time=datetime.now().strftime("%Y-%m-%d"),
     )
     
-    # 测试未来时间（应该返回更多记忆）
-    print("\n  📅 子测试 3.2: 检索未来时间的语义记忆（包含更长期的预测）")
+    # Test future time (should return more memories)
+    print("\n  📅 Sub-test 3.2: Retrieve foresight for future time (includes long-term predictions)")
     result_future = await tester.test_retrieval(
-        query="北京",
-        data_source="semantic_memory",
+        query="Sports",
+        data_source="foresight",
         memory_scope="personal",
         retrieval_mode="rrf",
-        user_id="user_001",  # 使用实际数据库中的 user_id
-        current_time="2027-12-31",  # 未来时间
+        user_id="user_001",  # Use actual user_id in DB
+        current_time="2027-12-31",  # Future time
         allow_empty=True,
     )
     
-    # 测试过去时间（应该返回较少记忆）
-    print("\n  📅 子测试 3.3: 检索过去时间的语义记忆（已过期的记忆）")
+    # Test past time (should return fewer memories)
+    print("\n  📅 Sub-test 3.3: Retrieve foresight for past time (expired memories)")
     result_past = await tester.test_retrieval(
-        query="北京",
-        data_source="semantic_memory",
+        query="Sports",
+        data_source="foresight",
         memory_scope="personal",
         retrieval_mode="rrf",
-        user_id="user_001",  # 使用实际数据库中的 user_id
-        current_time="2024-01-01",  # 过去时间
+        user_id="user_001",  # Use actual user_id in DB
+        current_time="2024-01-01",  # Past time
         allow_empty=True,
     )
     
-    print(f"\n  📊 时间过滤效果对比:")
-    print(f"     过去时间(2024-01-01): {result_past.get('count', 0)} 条")
-    print(f"     当前时间({datetime.now().strftime('%Y-%m-%d')}): {result_current.get('count', 0)} 条")
-    print(f"     未来时间(2027-12-31): {result_future.get('count', 0)} 条")
+    test3_elapsed = time.time() - test3_start
     
-    # ========== 打印总结 ==========
+    print(f"\n  📊 Time Filtering Comparison:")
+    print(f"     Past (2024-01-01): {result_past.get('count', 0)} items")
+    print(f"     Current ({datetime.now().strftime('%Y-%m-%d')}): {result_current.get('count', 0)} items")
+    print(f"     Future (2027-12-31): {result_future.get('count', 0)} items")
+    print(f"\n⏱️  Scenario 3 Duration: {test3_elapsed:.2f}s")
+    
+    # ========== Print Summary ==========
     tester.print_summary()
     
-    # ========== 导出结果 ==========
+    # Overall Duration
+    overall_elapsed = time.time() - overall_start_time
+    print(f"\n⏱️  Overall Test Duration: {overall_elapsed:.2f}s")
+    print(f"   Scenario 1: {test1_elapsed:.2f}s ({test1_elapsed/overall_elapsed*100:.1f}%)")
+    print(f"   Scenario 2: {test2_elapsed:.2f}s ({test2_elapsed/overall_elapsed*100:.1f}%)")
+    print(f"   Scenario 3: {test3_elapsed:.2f}s ({test3_elapsed/overall_elapsed*100:.1f}%)")
+    
+    # ========== Export Results ==========
     tester.export_results()
     
     print("\n" + "="*80)
-    print("✅ 全面检索测试完成！")
+    print("✅ Comprehensive Retrieval Test Completed!")
     print("="*80)
 
 
-async def demo_semantic_memory_evidence():
-    """演示语义记忆的 evidence 字段用法"""
+async def demo_foresight_evidence():
+    """Demo Foresight Evidence Field Usage"""
     
     print("\n" + "="*80)
-    print("💡 语义记忆 Evidence 字段演示")
+    print("💡 Foresight Evidence Field Demo")
     print("="*80)
     
     base_url = "http://localhost:8001"
     retrieve_url = f"{base_url}/api/v3/agentic/retrieve_lightweight"
     
-    print("\n📖 场景说明:")
-    print("   用户拔了智齿 → 系统生成语义记忆：'会优先选择软质食物'")
-    print("   Evidence 字段存储原因：'刚拔除智齿'")
-    print("   当用户查询'推荐食物'时，可以看到推荐依据")
+    print("\n📖 Scenario Description:")
+    print("   User removed wisdom tooth → System generates foresight: 'Prefer soft food'")
+    print("   Evidence field storage reason: 'Just removed wisdom tooth'")
+    print("   When user queries 'recommended food', they can see the recommendation basis")
     
     payload = {
-        "query": "北京",
-        "user_id": "robot_001",  # 使用实际数据库中的 user_id
-        "data_source": "semantic_memory",
+        "query": "Sports",
+        "user_id": "robot_001",  # Use actual user_id in DB
+        "data_source": "foresight",
         "retrieval_mode": "rrf",
         "top_k": 5,
         "current_time": datetime.now().strftime("%Y-%m-%d"),
     }
     
-    print(f"\n🔍 查询: {payload['query']}")
-    print(f"   数据源: semantic_memory")
-    print(f"   当前时间: {payload['current_time']}")
+    print(f"\n🔍 Query: {payload['query']}")
+    print(f"   Data Source: foresight")
+    print(f"   Current Time: {payload['current_time']}")
     
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -510,72 +575,72 @@ async def demo_semantic_memory_evidence():
                 memories = result.get("result", {}).get("memories", [])
                 metadata = result.get("result", {}).get("metadata", {})
                 
-                print(f"\n✅ 检索成功: 找到 {len(memories)} 条语义记忆")
-                print(f"   耗时: {metadata.get('total_latency_ms', 0):.2f}ms")
+                print(f"\n✅ Retrieval Success: Found {len(memories)} foresight items")
+                print(f"   Latency: {metadata.get('total_latency_ms', 0):.2f}ms")
                 
                 if memories:
-                    print("\n📝 语义记忆详情（包含 evidence）:")
+                    print("\n📝 Foresight Details (including evidence):")
                     for i, mem in enumerate(memories[:5], 1):
-                        print(f"\n  [{i}] 相关度: {mem.get('score', 0):.4f}")
-                        print(f"      内容: {mem.get('episode', '')[:100]}")
+                        print(f"\n  [{i}] Relevance: {mem.get('score', 0):.4f}")
+                        print(f"      Content: {mem.get('episode', '')[:100]}")
                         
-                        # 重点展示 evidence 字段
+                        # Highlight Evidence Field
                         evidence = mem.get('evidence', '')
                         if evidence:
-                            print(f"      🔍 证据: {evidence}")
+                            print(f"      🔍 Evidence: {evidence}")
                         
-                        # 展示时间范围
+                        # Show Time Range
                         timestamp = mem.get('timestamp', '')
                         if timestamp:
                             if isinstance(timestamp, str):
-                                print(f"      ⏰ 时间: {timestamp[:10]}")
+                                print(f"      ⏰ Time: {timestamp[:10]}")
                             else:
-                                print(f"      ⏰ 时间: {timestamp}")
+                                print(f"      ⏰ Time: {timestamp}")
                         
-                        # 展示元数据
+                        # Show Metadata
                         metadata_detail = mem.get('metadata', {})
                         if metadata_detail:
-                            print(f"      📋 元数据: {metadata_detail}")
+                            print(f"      📋 Metadata: {metadata_detail}")
                 else:
-                    print("\n  💡 未找到相关语义记忆")
-                    print("     可能原因:")
-                    print("     1. 还没有生成语义记忆（需要先运行 extract_memory.py）")
-                    print("     2. 查询与现有语义记忆不相关")
-                    print("     3. 语义记忆已过期（end_time < current_time）")
+                    print("\n  💡 No related foresight found")
+                    print("     Possible reasons:")
+                    print("     1. Foresight not generated yet (need to run extract_memory.py first)")
+                    print("     2. Query not relevant to existing foresight")
+                    print("     3. Foresight expired (end_time < current_time)")
             else:
-                print(f"\n❌ 检索失败: {result.get('message')}")
+                print(f"\n❌ Retrieval Failed: {result.get('message')}")
                 
     except httpx.ConnectError:
-        print(f"\n❌ 无法连接到 API 服务器 ({base_url})")
-        print("   请先启动服务: uv run python src/bootstrap.py src/run.py --port 8001")
+        print(f"\n❌ Cannot connect to API server ({base_url})")
+        print("   Please start service first: uv run python src/bootstrap.py src/run.py --port 8001")
     except Exception as e:
-        print(f"\n❌ 异常: {e}")
+        print(f"\n❌ Exception: {e}")
 
 
 async def main_menu():
-    """主菜单"""
+    """Main Menu"""
     
     print("\n" + "="*80)
-    print("🧪 记忆检索测试工具")
+    print("🧪 Memory Retrieval Test Tool")
     print("="*80)
-    print("\n选择测试模式:")
-    print("  1. 全面检索测试（27种组合）")
-    print("  2. 语义记忆 Evidence 演示")
-    print("  3. 两者都运行")
-    print("\n⚠️  注意: 请确保已有测试数据（运行过 extract_memory.py）")
-    print("\n请输入选项 (1/2/3): ", end="")
+    print("\nSelect Test Mode:")
+    print("  1. Comprehensive Retrieval Test (27 combinations)")
+    print("  2. Foresight Evidence Demo")
+    print("  3. Run Both")
+    print("\n⚠️  Note: Ensure test data exists (run extract_memory.py)")
+    print("\nEnter option (1/2/3): ", end="")
     
     choice = input().strip()
     
     if choice == "1":
         await main()
     elif choice == "2":
-        await demo_semantic_memory_evidence()
+        await demo_foresight_evidence()
     elif choice == "3":
         await main()
-        await demo_semantic_memory_evidence()
+        await demo_foresight_evidence()
     else:
-        print("❌ 无效选项，请重新运行")
+        print("❌ Invalid option, please re-run")
 
 
 if __name__ == "__main__":

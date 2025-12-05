@@ -410,7 +410,7 @@ def fetch_user_data(user_id: str) -> dict:
 
 ```python
 # ✅ Correct: Using async database driver
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 async def get_user(db, user_id: str):
     return await db.users.find_one({"_id": user_id})
@@ -910,8 +910,8 @@ class MemoryRepository(ABC):
         pass
     
     @abstractmethod
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """Semantic search"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """Foresight search"""
         pass
 ```
 
@@ -919,14 +919,14 @@ class MemoryRepository(ABC):
 
 ```python
 # infra_layer/adapters/out/persistence/repository/memory_mongo_repository.py
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.asynchronous.database import AsyncDatabase
 from core.ports.memory_repository import MemoryRepository
 from core.domain.memory import Memory
 
 class MemoryMongoRepository(MemoryRepository):
     """MongoDB memory repository implementation"""
     
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: AsyncDatabase):
         self._collection = db["memories"]
     
     async def save(self, memory: Memory) -> str:
@@ -942,7 +942,7 @@ class MemoryMongoRepository(MemoryRepository):
         docs = await cursor.to_list(length=limit)
         return [Memory.from_dict(doc) for doc in docs]
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
         # Call vector search (encapsulated in infra layer)
         # May also call ElasticSearch or Milvus here
         ...
@@ -978,20 +978,20 @@ class MemoryService:
     
     async def search_memories(self, user_id: str, query: str) -> List[Memory]:
         """Search memories"""
-        # ✅ Correct: semantic search through repository
-        return await self._memory_repo.search_semantic(query, user_id)
+        # ✅ Correct: foresight search through repository
+        return await self._memory_repo.search_foresight(query, user_id)
 ```
 
 #### ❌ Wrong Example: Business Layer Directly Accesses Database
 
 ```python
 # ❌ Wrong: Business layer directly uses MongoDB driver
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 class MemoryService:
     def __init__(self, db_uri: str):
         # ❌ Business layer should not directly connect to database
-        self._client = AsyncIOMotorClient(db_uri)
+        self._client = AsyncMongoClient(db_uri)
         self._db = self._client["memsys"]
     
     async def create_memory(self, user_id: str, content: str) -> str:
@@ -1023,10 +1023,10 @@ class MemoryRetriever:
 ```python
 # ❌ Wrong: API layer directly accesses database
 from fastapi import APIRouter
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 router = APIRouter()
-db_client = AsyncIOMotorClient("mongodb://localhost")
+db_client = AsyncMongoClient("mongodb://localhost")
 
 @router.get("/memories/{user_id}")
 async def get_memories(user_id: str):
@@ -1054,7 +1054,7 @@ class Container(containers.DeclarativeContainer):
     
     # Database connection
     mongodb_client = providers.Singleton(
-        AsyncIOMotorClient,
+        AsyncMongoClient,
         config.mongodb.uri
     )
     
@@ -1081,12 +1081,12 @@ class Container(containers.DeclarativeContainer):
 **ElasticSearch / Milvus also follow Repository pattern**
 
 ```python
-# infra_layer/adapters/out/search/repository/semantic_memory_es_repository.py
+# infra_layer/adapters/out/search/repository/foresight_es_repository.py
 from elasticsearch import AsyncElasticsearch
 from typing import List
 
-class SemanticMemoryESRepository:
-    """ElasticSearch semantic memory repository"""
+class ForesightESRepository:
+    """ElasticSearch foresight repository"""
     
     def __init__(self, es_client: AsyncElasticsearch, index_name: str):
         self._es = es_client
@@ -1126,13 +1126,13 @@ class SemanticMemoryESRepository:
 **Business Layer Calls Search Repository**
 
 ```python
-# memory_layer/retrievers/semantic_retriever.py
-from infra_layer.adapters.out.search.repository.semantic_memory_es_repository import SemanticMemoryESRepository
+# memory_layer/retrievers/foresight_retriever.py
+from infra_layer.adapters.out.search.repository.foresight_es_repository import ForesightESRepository
 
-class SemanticRetriever:
-    """Semantic retriever (business logic layer)"""
+class ForesightRetriever:
+    """Foresight retriever (business logic layer)"""
     
-    def __init__(self, search_repo: SemanticMemoryESRepository):
+    def __init__(self, search_repo: ForesightESRepository):
         # ✅ Depend on abstraction, get repository through dependency injection
         self._search_repo = search_repo
     
@@ -1156,7 +1156,7 @@ class MemoryHybridRepository(MemoryRepository):
     def __init__(
         self,
         mongo_repo: MemoryMongoRepository,
-        es_repo: SemanticMemoryESRepository
+        es_repo: ForesightESRepository
     ):
         self._mongo = mongo_repo
         self._es = es_repo
@@ -1175,8 +1175,8 @@ class MemoryHybridRepository(MemoryRepository):
         
         return memory_id
     
-    async def search_semantic(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
-        """Semantic search: ES query + MongoDB supplement details"""
+    async def search_foresight(self, query: str, user_id: str, top_k: int = 10) -> List[Memory]:
+        """Foresight search: ES query + MongoDB supplement details"""
         # 1. ES search to get relevant IDs
         es_results = await self._es.search_by_text(query, top_k)
         memory_ids = [hit["_id"] for hit in es_results]

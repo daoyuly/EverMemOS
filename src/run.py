@@ -10,18 +10,12 @@ Memsys 记忆系统的主要业务应用，包含：
 """
 import argparse
 import os
-import asyncio
 import sys
 import uvicorn
 import logging
 
 # 这里环境变量还没加载，所以不能使用get_logger
 logger = logging.getLogger(__name__)
-
-# 添加src目录到Python路径
-from import_parent_dir import add_parent_path
-
-add_parent_path(0)
 
 # 应用信息
 APP_NAME = "Memory System"
@@ -50,6 +44,9 @@ def parse_args():
     parser.add_argument(
         "--longjob", type=str, help="启动指定的长任务消费者 (例如: kafka_consumer)"
     )
+    parser.add_argument(
+        "--skip-migrations", action="store_true", help="跳过启动时的 MongoDB 数据库迁移"
+    )
     return parser.parse_args()
 
 
@@ -61,6 +58,11 @@ def main():
         service_name = "longjob_" + args.longjob
     else:
         service_name = "web"
+
+    # 添加src目录到Python路径
+    from import_parent_dir import add_parent_path
+
+    add_parent_path(0)
 
     # 使用统一的环境加载工具
     from common_utils.load_env import setup_environment
@@ -92,6 +94,7 @@ def main():
     logger.info("  📄 Env File: %s", args.env_file)
     logger.info("  🎭 Mock Mode: %s", args.mock)
     logger.info("  🔧 LongJob Mode: %s", args.longjob if args.longjob else "Disabled")
+    logger.info("  🔄 Skip Migrations: %s", args.skip_migrations)
 
     # 执行依赖注入和异步任务设置
     from application_startup import setup_all
@@ -99,13 +102,15 @@ def main():
     # 在模块加载时就执行依赖注入和异步任务设置
     setup_all()
 
+    # 执行 MongoDB 数据库迁移（可通过 --skip-migrations 参数跳过）
+    from core.oxm.mongo.migration.manager import MigrationManager
+
+    MigrationManager.run_migrations_on_startup(enabled=not args.skip_migrations)
+
     # 检查是否是 LongJob 模式
     if args.longjob:
         logger.info("🔧 启动 LongJob 模式: %s", args.longjob)
-        from longjob_runner import run_longjob_mode
-
-        asyncio.run(run_longjob_mode(args.longjob))
-        sys.exit(0)
+        os.environ["LONGJOB_NAME"] = args.longjob
 
     from app import app
 

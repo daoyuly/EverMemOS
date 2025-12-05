@@ -642,9 +642,9 @@ class EverMemOSAdapter(BaseAdapter):
 
         # Map Add stage configuration (only override explicitly specified in YAML)
         add_config = self.config.get("add", {})
-        if "enable_semantic_extraction" in add_config:
-            exp_config.enable_semantic_extraction = add_config[
-                "enable_semantic_extraction"
+        if "enable_foresight_extraction" in add_config:
+            exp_config.enable_foresight_extraction = add_config[
+                "enable_foresight_extraction"
             ]
         if "enable_clustering" in add_config:
             exp_config.enable_clustering = add_config["enable_clustering"]

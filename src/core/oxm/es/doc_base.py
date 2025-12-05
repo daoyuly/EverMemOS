@@ -5,18 +5,35 @@ import os
 from fnmatch import fnmatch
 from datetime import datetime
 from elasticsearch.dsl import MetaField, AsyncDocument, field as e_field
-from common_utils.datetime_utils import get_now_with_timezone, to_timezone
-
-
-def get_index_ns() -> str:
-    return os.getenv("SELF_ES_INDEX_NS") or ""
+from common_utils.datetime_utils import to_timezone
+from core.oxm.es.es_utils import generate_index_name, get_index_ns
+from elasticsearch import AsyncElasticsearch
 
 
 class DocBase(AsyncDocument):
     """Elasticsearch文档基类"""
 
-    class Meta:
-        abstract = True
+    @classmethod
+    def get_connection(cls) -> AsyncElasticsearch:
+        """
+        获取连接
+        """
+        return cls._get_connection()
+
+    @classmethod
+    def get_index_name(cls) -> str:
+        """
+        获取索引名称（别名）
+
+        Returns:
+            str: 索引别名
+
+        Raises:
+            ValueError: 如果文档类没有正确配置索引
+        """
+        if hasattr(cls, '_index') and hasattr(cls._index, '_name'):
+            return cls._index._name
+        raise ValueError(f"文档类 {cls.__name__} 没有正确的索引配置")
 
 
 class AliasSupportDoc(DocBase):
@@ -156,8 +173,7 @@ class AliasSupportDoc(DocBase):
 
     @classmethod
     def dest(cls):
-        now = get_now_with_timezone()
-        return f"{cls._index._name}-{now.strftime('%Y%m%d%H%M%S%f')}"
+        return generate_index_name(cls)
 
 
 def AliasDoc(doc_name: str, number_of_shards: int = 2) -> Type[AsyncDocument]:

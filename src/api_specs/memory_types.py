@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-import datetime
+from datetime import datetime
 from common_utils.datetime_utils import to_iso_format
 
 from api_specs.memory_models import MemoryType
@@ -59,7 +59,7 @@ class MemCell:
     user_id_list: List[str]
     # For downstream consumers we store normalized dicts extracted from RawData
     original_data: List[Dict[str, Any]]
-    timestamp: datetime.datetime
+    timestamp: datetime
     summary: str
 
     # Optional fields
@@ -72,8 +72,8 @@ class MemCell:
     linked_entities: Optional[List[str]] = None
     episode: Optional[str] = None  # 情景记忆内容
 
-    # 语义记忆联想预测字段
-    semantic_memories: Optional[List['SemanticMemoryItem']] = None  # 语义记忆联想列表
+    # 前瞻联想预测字段
+    foresights: Optional[List['ForesightItem']] = None  # 前瞻联想列表
     # Event Log 字段
     event_log: Optional[Any] = None  # Event Log 对象
     # extend fields, can be used to store any additional information
@@ -106,9 +106,9 @@ class MemCell:
             "linked_entities": self.linked_entities,
             "subject": self.subject,
             "episode": self.episode,
-            "semantic_memories": (
-                [item.to_dict() for item in self.semantic_memories]
-                if self.semantic_memories
+            "foresights": (
+                [item.to_dict() for item in self.foresights]
+                if self.foresights
                 else None
             ),
             "event_log": (
@@ -134,7 +134,7 @@ class Memory:
 
     memory_type: MemoryType
     user_id: str
-    timestamp: datetime.datetime
+    timestamp: datetime
     ori_event_id_list: List[str]
 
     subject: Optional[str] = None
@@ -150,9 +150,13 @@ class Memory:
 
     memcell_event_id_list: Optional[List[str]] = None
     user_name: Optional[str] = None
-    # 语义记忆联想预测字段
-    semantic_memories: Optional[List['SemanticMemoryItem']] = None  # 语义记忆联想列表
+    # 前瞻联想预测字段
+    foresights: Optional[List['ForesightItem']] = None  # 前瞻联想列表
     extend: Optional[Dict[str, Any]] = None
+
+    # 向量和模型
+    vector_model: Optional[str] = None
+    vector: Optional[List[float]] = None
 
     def __post_init__(self):
         pass
@@ -184,9 +188,9 @@ class Memory:
             "type": self.type.value if self.type else None,
             "keywords": self.keywords,
             "linked_entities": self.linked_entities,
-            "semantic_memories": (
-                [item.to_dict() for item in self.semantic_memories]
-                if self.semantic_memories
+            "foresights": (
+                [item.to_dict() for item in self.foresights]
+                if self.foresights
                 else None
             ),
             "extend": self.extend,
@@ -194,11 +198,51 @@ class Memory:
 
 
 @dataclass
-class SemanticMemoryItem:
+class Foresight:
     """
-    语义记忆联想项目
+    前瞻数据模型
 
-    包含时间信息的语义记忆联想预测
+    用于存储从情景记忆中提取的前瞻知识
+    """
+
+    user_id: str
+    content: str
+    knowledge_type: str = "knowledge"
+    source_episodes: List[str] = None
+    created_at: datetime = None
+    group_id: Optional[str] = None
+    participants: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        from common_utils.datetime_utils import get_now_with_timezone
+        
+        if self.source_episodes is None:
+            self.source_episodes = []
+        if self.created_at is None:
+            self.created_at = get_now_with_timezone()
+        if self.metadata is None:
+            self.metadata = {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "user_id": self.user_id,
+            "content": self.content,
+            "knowledge_type": self.knowledge_type,
+            "source_episodes": self.source_episodes,
+            "created_at": to_iso_format(self.created_at),
+            "group_id": self.group_id,
+            "participants": self.participants,
+            "metadata": self.metadata,
+        }
+
+
+@dataclass
+class ForesightItem:
+    """
+    前瞻联想项目
+
+    包含时间信息的前瞻联想预测
     """
 
     content: str
@@ -207,7 +251,8 @@ class SemanticMemoryItem:
     end_time: Optional[str] = None  # 事件结束时间，格式：YYYY-MM-DD
     duration_days: Optional[int] = None  # 持续时间（天数）
     source_episode_id: Optional[str] = None  # 来源事件ID
-    embedding: Optional[List[float]] = None
+    vector: Optional[List[float]] = None
+    vector_model: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -217,5 +262,6 @@ class SemanticMemoryItem:
             "end_time": self.end_time,
             "duration_days": self.duration_days,
             "source_episode_id": self.source_episode_id,
-            "embedding": self.embedding,
+            "vector": self.vector,
+            "vector_model": self.vector_model,
         }
