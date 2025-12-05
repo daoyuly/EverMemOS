@@ -434,7 +434,7 @@ async def process_single_conversation(
             group_name=f"LoComo Conversation {conv_id}",
         )
 
-    # Extract MemCells
+    # Extract MemCells (pass foresight extraction config)
     memcell_list = await memcell_extraction_from_conversation(
         raw_data_list,
         llm_provider=llm_provider,
@@ -444,7 +444,6 @@ async def process_single_conversation(
         task_id=task_id,
         enable_foresight_extraction=config.enable_foresight_extraction if config else False,
     )
-    # print(f"   ✅ Conv {conv_id}: {len(memcell_list)} memcells extracted")  # Commented to avoid interrupting progress bar
 
     # Convert timestamps to datetime objects before saving
     for memcell in memcell_list:
