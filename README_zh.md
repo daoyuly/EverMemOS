@@ -347,7 +347,7 @@ uv run python src/bootstrap.py demo/extract_memory.py
 
 该脚本将：
 - 调用 `demo.tools.clear_all_data.clear_all_memories()`，确保演示从空的 MongoDB/Elasticsearch/Milvus/Redis 状态开始。在执行脚本前请确保 `docker-compose` 启动的依赖服务正在运行，否则清理步骤会失败。
-- 加载 `data/assistant_chat_zh.json`，为每条消息添加 `scene="assistant"`，并将每条记录流式发送到 `http://localhost:8001/api/v3/agentic/memorize`。如果您在其他端点托管 API 或想要导入不同的场景，可以更新 `demo/extract_memory.py` 中的 `base_url`、`data_file` 或 `scene` 常量。
+- 加载 `data/assistant_chat_zh.json`，为每条消息添加 `scene="assistant"`，并将每条记录流式发送到 `http://localhost:8001/api/v1/memories`。如果您在其他端点托管 API 或想要导入不同的场景，可以更新 `demo/extract_memory.py` 中的 `base_url`、`data_file` 或 `scene` 常量。
 - 仅通过 HTTP API 写入：MemCell、情节和画像都在数据库中创建，而不是保存在 `demo/memcell_outputs/` 目录下。可以检查 MongoDB（以及 Milvus/Elasticsearch）验证数据摄入，或直接进入聊天演示。
 
 > **💡 提示**: 详细的配置说明和使用指南请参阅 [Demo 文档](demo/README_zh.md)。
@@ -361,7 +361,7 @@ uv run python src/bootstrap.py demo/extract_memory.py
 uv run python src/bootstrap.py demo/chat_with_memory.py
 ```
 
-该程序通过 `python-dotenv` 加载 `.env` 文件，验证至少一个 LLM 密钥（`LLM_API_KEY`、`OPENROUTER_API_KEY` 或 `OPENAI_API_KEY`）可用，并通过 `demo.utils.ensure_mongo_beanie_ready` 连接到 MongoDB 以枚举已包含 MemCell 的群组。每个用户查询都会调用 `api/v3/agentic/retrieve_lightweight`，除非您明确选择 Agentic 模式，在这种情况下，编排器会切换到 `api/v3/agentic/retrieve_agentic` 并警告额外的 LLM 延迟。
+该程序通过 `python-dotenv` 加载 `.env` 文件，验证至少一个 LLM 密钥（`LLM_API_KEY`、`OPENROUTER_API_KEY` 或 `OPENAI_API_KEY`）可用，并通过 `demo.utils.ensure_mongo_beanie_ready` 连接到 MongoDB 以枚举已包含 MemCell 的群组。每个用户查询都会调用 `api/v1/memories/search`，除非您明确选择 Agentic 模式，在这种情况下，编排器会切换到 agentic 检索并警告额外的 LLM 延迟。
 
 **交互流程：**
 1. **选择语言**：选择中文或英文终端界面。
@@ -453,13 +453,13 @@ uv run python src/bootstrap.py src/run.py --port 8001
 
 ---
 
-使用 V3 API 存储单条消息记忆：
+使用 Memory API 存储单条消息记忆：
 
 <details>
 <summary>示例：存储单条消息</summary>
 
 ```bash
-curl -X POST http://localhost:8001/api/v3/agentic/memorize \
+curl -X POST http://localhost:8001/api/v1/memories \
   -H "Content-Type: application/json" \
   -d '{
     "message_id": "msg_001",
@@ -478,11 +478,10 @@ curl -X POST http://localhost:8001/api/v3/agentic/memorize \
 > ℹ️ 目前默认开启全部记忆种类提取和存储
 **API 功能说明**：
 
-- **`/api/v3/agentic/memorize`**: 存储单条消息记忆
-- **`/api/v3/agentic/retrieve_lightweight`**: 轻量级记忆检索（快速检索模式）
-- **`/api/v3/agentic/retrieve_agentic`**: Agentic 记忆检索（LLM 引导的多轮智能检索）
+- **`POST /api/v1/memories`**: 存储单条消息记忆
+- **`GET /api/v1/memories/search`**: 记忆检索（支持关键词/向量/混合检索模式）
 
-更多 API 详情请参考 [Agentic V3 API 文档](docs/api_docs/agentic_v3_api_zh.md)。
+更多 API 详情请参考 [Memory API 文档](docs/api_docs/memory_api_zh.md)。
 
 ---
 
@@ -509,7 +508,7 @@ EverMemOS 提供两种检索模式：**轻量级检索**（快速）和 **Agenti
 <summary>示例：个人记忆检索</summary>
 
 ```bash
-curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
+curl -X GET http://localhost:8001/api/v1/memories/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "用户喜欢什么运动",
@@ -528,7 +527,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
 <summary>示例：群组记忆检索</summary>
 
 ```bash
-curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
+curl -X GET http://localhost:8001/api/v1/memories/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "讨论项目进展",
@@ -541,35 +540,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
 
 </details>
 
----
-
-**Agentic 检索**
-
-使用 LLM 引导的多轮智能搜索，自动进行查询改进和结果重排序。
-
-<details>
-<summary>示例：Agentic 检索</summary>
-
-```bash
-curl -X POST http://localhost:8001/api/v3/agentic/retrieve_agentic \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "用户可能喜欢吃什么？",
-    "user_id": "user_001",
-    "group_id": "chat_group_001",
-    "top_k": 20,
-    "llm_config": {
-      "model": "gpt-4o-mini",
-      "api_key": "your_api_key"
-    }
-  }'
-```
-
-</details>
-
-> ⚠️ Agentic 检索需要 LLM API Key，耗时较长，但能为需要多记忆来源、复杂逻辑查询提供更高质量的结果。
-
-> 📖 完整文档：[Agentic V3 API](docs/api_docs/agentic_v3_api_zh.md) | 测试工具：`demo/tools/test_retrieval_comprehensive.py`
+> 📖 完整文档：[Memory API](docs/api_docs/memory_api_zh.md) | 测试工具：`demo/tools/test_retrieval_comprehensive.py`
 
 ---
 
@@ -581,13 +552,13 @@ EverMemOS 支持标准化的群聊数据格式（[GroupChatFormat](data_format/g
 # 使用脚本批量存储（中文数据）
 uv run python src/bootstrap.py src/run_memorize.py \
   --input data/group_chat_zh.json \
-  --api-url http://localhost:8001/api/v3/agentic/memorize \
+  --api-url http://localhost:8001/api/v1/memories \
   --scene group_chat
 
 # 或者使用英文数据
 uv run python src/bootstrap.py src/run_memorize.py \
   --input data/group_chat_en.json \
-  --api-url http://localhost:8001/api/v3/agentic/memorize \
+  --api-url http://localhost:8001/api/v1/memories \
   --scene group_chat
 
 # 验证文件格式
@@ -650,7 +621,7 @@ uv run python src/bootstrap.py src/run_memorize.py \
 - [Bootstrap 使用](docs/dev_docs/bootstrap_usage.md) - 脚本运行器
 
 ### API 文档
-- [Agentic V3 API](docs/api_docs/agentic_v3_api_zh.md) - 智能体层 API
+- [Memory API](docs/api_docs/memory_api_zh.md) - 记忆管理 API
 
 ### 核心框架
 - [依赖注入框架](src/core/di/README.md) - DI 容器使用指南

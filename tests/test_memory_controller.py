@@ -451,17 +451,17 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_fetch_episodic(self):
-        """测试2: GET /api/v1/memories - 获取用户情景记忆（episodic_memory类型）"""
+        """测试2: GET /api/v1/memories - 获取用户情景记忆（episodic_memory类型，通过 body 传参）"""
         self.print_section("测试2: GET /api/v1/memories - 获取用户情景记忆")
 
-        params = {
+        data = {
             "user_id": self.user_id,
             "memory_type": "episodic_memory",
             "limit": 10,
             "offset": 0,
         }
 
-        status_code, response = self.call_get_api("", params)
+        status_code, response = self.call_get_with_body_api("", data)
 
         # 断言：精确验证响应结构
         assert status_code == 200, f"状态码应该是 200，实际: {status_code}"
@@ -508,17 +508,17 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_fetch_foresight(self):
-        """测试3: GET /api/v1/memories - 获取个人前瞻（foresight类型）"""
+        """测试3: GET /api/v1/memories - 获取个人前瞻（foresight类型，通过 body 传参）"""
         self.print_section("测试3: GET /api/v1/memories - 获取个人前瞻")
 
-        params = {
+        data = {
             "user_id": self.user_id,
             "memory_type": "foresight",
             "limit": 10,
             "offset": 0,
         }
 
-        status_code, response = self.call_get_api("", params)
+        status_code, response = self.call_get_with_body_api("", data)
 
         # 断言：精确验证响应结构
         assert status_code == 200, f"状态码应该是 200，实际: {status_code}"
@@ -567,17 +567,17 @@ class MemoryControllerTester:
         return status_code, response
 
     def test_fetch_event_log(self):
-        """测试4: GET /api/v1/memories - 获取用户事件日志（event_log类型）"""
+        """测试4: GET /api/v1/memories - 获取用户事件日志（event_log类型，通过 body 传参）"""
         self.print_section("测试4: GET /api/v1/memories - 获取用户事件日志")
 
-        params = {
+        data = {
             "user_id": self.user_id,
             "memory_type": "event_log",
             "limit": 10,
             "offset": 0,
         }
 
-        status_code, response = self.call_get_api("", params)
+        status_code, response = self.call_get_with_body_api("", data)
 
         # 断言：精确验证响应结构
         assert status_code == 200, f"状态码应该是 200，实际: {status_code}"

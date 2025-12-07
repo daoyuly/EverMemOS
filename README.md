@@ -350,7 +350,7 @@ uv run python src/bootstrap.py demo/extract_memory.py
 
 This script performs the following actions:
 - Calls `demo.tools.clear_all_data.clear_all_memories()` so the demo starts from an empty MongoDB/Elasticsearch/Milvus/Redis state. Ensure the dependency stack launched by `docker-compose` is running before executing the script, otherwise the wipe step will fail.
-- Loads `data/assistant_chat_zh.json`, appends `scene="assistant"` to each message, and streams every entry to `http://localhost:8001/api/v3/agentic/memorize`. Update the `base_url`, `data_file`, or `profile_scene` constants in `demo/extract_memory.py` if you host the API on another endpoint or want to ingest a different scenario.
+- Loads `data/assistant_chat_zh.json`, appends `scene="assistant"` to each message, and streams every entry to `http://localhost:8001/api/v1/memories`. Update the `base_url`, `data_file`, or `profile_scene` constants in `demo/extract_memory.py` if you host the API on another endpoint or want to ingest a different scenario.
 - Writes through the HTTP API only: MemCells, episodes, and profiles are created inside your databases, not under `demo/memcell_outputs/`. Inspect MongoDB (and Milvus/Elasticsearch) to verify ingestion or proceed directly to the chat demo.
 
 > **💡 Tip**: For detailed configuration instructions and usage guide, please refer to the [Demo Documentation](demo/README.md).
@@ -364,7 +364,7 @@ After extracting memories, start the interactive chat demo:
 uv run python src/bootstrap.py demo/chat_with_memory.py
 ```
 
-This program loads `.env` via `python-dotenv`, verifies that at least one LLM key (`LLM_API_KEY`, `OPENROUTER_API_KEY`, or `OPENAI_API_KEY`) is available, and connects to MongoDB through `demo.utils.ensure_mongo_beanie_ready` to enumerate groups that already contain MemCells. Each user query invokes `api/v3/agentic/retrieve_lightweight` unless you explicitly select the Agentic mode, in which case the orchestrator switches to `api/v3/agentic/retrieve_agentic` and warns about the additional LLM latency.
+This program loads `.env` via `python-dotenv`, verifies that at least one LLM key (`LLM_API_KEY`, `OPENROUTER_API_KEY`, or `OPENAI_API_KEY`) is available, and connects to MongoDB through `demo.utils.ensure_mongo_beanie_ready` to enumerate groups that already contain MemCells. Each user query invokes `api/v1/memories/search` unless you explicitly select the Agentic mode, in which case the orchestrator switches to agentic retrieval and warns about the additional LLM latency.
 
 **Interactive Workflow:**
 1. **Select Language**: Choose a zh or en terminal UI.
@@ -456,13 +456,13 @@ uv run python src/bootstrap.py src/run.py --port 8001
 
 ---
 
-Use V3 API to store single message memory:
+Use Memory API to store single message memory:
 
 <details>
 <summary>Example: Store single message memory</summary>
 
 ```bash
-curl -X POST http://localhost:8001/api/v3/agentic/memorize \
+curl -X POST http://localhost:8001/api/v1/memories \
   -H "Content-Type: application/json" \
   -d '{
     "message_id": "msg_001",
@@ -483,11 +483,10 @@ curl -X POST http://localhost:8001/api/v3/agentic/memorize \
 
 **API Features**:
 
-- **`/api/v3/agentic/memorize`**: Store single message memory
-- **`/api/v3/agentic/retrieve_lightweight`**: Lightweight memory retrieval (fast retrieval mode)
-- **`/api/v3/agentic/retrieve_agentic`**: Agentic memory retrieval (LLM-guided multi-round intelligent retrieval)
+- **`POST /api/v1/memories`**: Store single message memory
+- **`GET /api/v1/memories/search`**: Memory retrieval (supports keyword/vector/hybrid search modes)
 
-For more API details, please refer to [Agentic V3 API Documentation](docs/api_docs/agentic_v3_api.md).
+For more API details, please refer to [Memory API Documentation](docs/api_docs/memory_api.md).
 
 ---
 
@@ -514,7 +513,7 @@ EverMemOS provides two retrieval modes: **Lightweight** (fast) and **Agentic** (
 <summary>Example: Personal Memory Retrieval</summary>
 
 ```bash
-curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
+curl -X GET http://localhost:8001/api/v1/memories/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "What sports does the user like?",
@@ -533,7 +532,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
 <summary>Example: Group Memory Retrieval</summary>
 
 ```bash
-curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
+curl -X GET http://localhost:8001/api/v1/memories/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "Discuss project progress",
@@ -546,35 +545,7 @@ curl -X POST http://localhost:8001/api/v3/agentic/retrieve_lightweight \
 
 </details>
 
----
-
-**Agentic Retrieval**
-
-LLM-guided multi-round intelligent search with automatic query refinement and result reranking.
-
-<details>
-<summary>Example: Agentic Retrieval</summary>
-
-```bash
-curl -X POST http://localhost:8001/api/v3/agentic/retrieve_agentic \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "What foods might the user like?",
-    "user_id": "user_001",
-    "group_id": "chat_group_001",
-    "top_k": 20,
-    "llm_config": {
-      "model": "gpt-4o-mini",
-      "api_key": "your_api_key"
-    }
-  }'
-```
-
-</details>
-
-> ⚠️ Agentic retrieval requires LLM API key and takes longer, but provides higher quality results for queries requiring multiple memory sources and complex logic.
-
-> 📖 Full Documentation: [Agentic V3 API](docs/api_docs/agentic_v3_api.md) | Testing Tool: `demo/tools/test_retrieval_comprehensive.py`
+> 📖 Full Documentation: [Memory API](docs/api_docs/memory_api.md) | Testing Tool: `demo/tools/test_retrieval_comprehensive.py`
 
 ---
 
@@ -586,13 +557,13 @@ EverMemOS supports a standardized group chat data format ([GroupChatFormat](data
 # Use script for batch storage (Chinese data)
 uv run python src/bootstrap.py src/run_memorize.py \
   --input data/group_chat_zh.json \
-  --api-url http://localhost:8001/api/v3/agentic/memorize \
+  --api-url http://localhost:8001/api/v1/memories \
   --scene group_chat 
 
 # Or use English data
 uv run python src/bootstrap.py src/run_memorize.py \
   --input data/group_chat_en.json \
-  --api-url http://localhost:8001/api/v3/agentic/memorize \
+  --api-url http://localhost:8001/api/v1/memories \
   --scene group_chat
 
 # Validate file format
@@ -654,7 +625,7 @@ For detailed installation, configuration, and usage instructions, please refer t
 - [Bootstrap Usage](docs/dev_docs/bootstrap_usage.md) - Script runner
 
 ### API Documentation
-- [Agentic V3 API](docs/api_docs/agentic_v3_api.md) - Agentic layer API
+- [Memory API](docs/api_docs/memory_api.md) - Memory management API
 
 ### Core Framework
 - [Dependency Injection Framework](src/core/di/README.md) - DI container usage guide

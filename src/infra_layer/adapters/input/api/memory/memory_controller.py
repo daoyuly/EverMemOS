@@ -351,16 +351,20 @@ class MemoryController(BaseController):
             HTTPException: 当请求处理失败时
         """
         try:
-            # 从 query parameters 获取参数
-            query_params = dict(fastapi_request.query_params)
+            # 优先从 body 获取参数，兼容 query params
+            try:
+                params = await fastapi_request.json()
+            except Exception:
+                # 如果没有 body，则从 query params 获取（兼容旧方式）
+                params = dict(fastapi_request.query_params)
             logger.info(
                 "收到 fetch 请求: user_id=%s, memory_type=%s",
-                query_params.get("user_id"),
-                query_params.get("memory_type"),
+                params.get("user_id"),
+                params.get("memory_type"),
             )
 
             # 直接使用 converter 转换
-            fetch_request = convert_dict_to_fetch_mem_request(query_params)
+            fetch_request = convert_dict_to_fetch_mem_request(params)
 
             # 调用 memory_manager 的 fetch_mem 方法
             response = await self.memory_manager.fetch_mem(fetch_request)
