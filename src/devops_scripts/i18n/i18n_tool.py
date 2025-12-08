@@ -1,0 +1,1218 @@
+"""
+I18N Tool - Chinese to English translation and review tool for Python files.
+
+This unified tool provides multiple functions for internationalization:
+1. translate: Translate Chinese comments/logs to English in Python files
+2. check: Check for remaining Chinese content in Python files
+3. review: Review git commits to verify translation changes
+
+CRITICAL RULES FOR TRANSLATION:
+    1. DO NOT modify any code logic - this is the most important rule
+    2. Only translate Chinese comments and Chinese log messages
+    3. Never change variable names, function names, class names, etc.
+    4. Never change any code structure or behavior
+    5. Violations of these rules are STRICTLY FORBIDDEN
+
+Usage:
+    # Translate commands
+    python -m devops_scripts.i18n.i18n_tool translate
+    python -m devops_scripts.i18n.i18n_tool translate --dry-run
+    python -m devops_scripts.i18n.i18n_tool translate --directory tests
+    python -m devops_scripts.i18n.i18n_tool translate --directory src tests
+
+    # Check commands
+    python -m devops_scripts.i18n.i18n_tool check
+    python -m devops_scripts.i18n.i18n_tool check --directory tests
+
+    # Review commands
+    python -m devops_scripts.i18n.i18n_tool review
+    python -m devops_scripts.i18n.i18n_tool review --commit abc123
+    python -m devops_scripts.i18n.i18n_tool review --commit HEAD~3..HEAD
+    python -m devops_scripts.i18n.i18n_tool review --reset  # Clear progress and start fresh
+"""
+
+import os
+import sys
+import re
+import asyncio
+import json
+import subprocess
+from pathlib import Path
+from typing import Optional
+from datetime import datetime
+from dataclasses import dataclass
+from enum import Enum
+
+# Add src to path for imports
+SRC_DIR = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(SRC_DIR))
+
+# Load environment variables first
+from dotenv import load_dotenv
+from common_utils.project_path import PROJECT_DIR
+
+env_file_path = PROJECT_DIR / ".env"
+if env_file_path.exists():
+    load_dotenv(env_file_path)
+    print(f"Loaded environment from {env_file_path}")
+
+from memory_layer.llm import OpenAIProvider
+
+
+# ==============================================================================
+# Common Configuration
+# ==============================================================================
+
+# Progress files to track which files have been processed
+TRANSLATION_PROGRESS_FILE = Path(__file__).parent / ".translation_progress.json"
+REVIEW_PROGRESS_FILE = Path(__file__).parent / ".review_progress.json"
+# Maximum file size to process (in bytes) - about 100KB
+MAX_FILE_SIZE = 100 * 1024
+
+# Directories to skip (relative to SRC_DIR)
+SKIP_DIRECTORIES = ["memory_layer/prompts"]
+
+# Files to skip (relative to SRC_DIR)
+SKIP_FILES = [
+    "memory_layer/memory_extractor/profile_memory/conversation.py",
+    "common_utils/text_utils.py",
+    "core/oxm/es/analyzer.py",
+    "memory_layer/memory_extractor/profile_memory/types.py",
+    "memory_layer/memory_extractor/profile_memory/value_helpers.py",
+    # This tool itself contains Chinese examples in prompts, skip it
+    "devops_scripts/i18n/i18n_tool.py",
+]
+
+
+# ==============================================================================
+# LLM Prompts
+# ==============================================================================
+
+TRANSLATION_PROMPT = '''You are a translation assistant. Your task is to translate Chinese comments and Chinese log messages in Python code to English.
+
+**CRITICAL RULES - MUST FOLLOW:**
+1. **ABSOLUTELY DO NOT modify any code logic** - This is the most important rule. Violations are STRICTLY FORBIDDEN.
+2. **ONLY translate Chinese text** in:
+   - Single-line comments (# ...)
+   - Multi-line docstrings (""" ... """ or \'\'\' ... \'\'\')
+   - String literals used in logging (logger.info(), logger.debug(), logger.warning(), logger.error(), print(), etc.)
+   - f-string literals used in logging
+3. **DO NOT change:**
+   - Variable names, function names, class names
+   - Code structure, indentation, line breaks
+   - Any Python syntax or operators
+   - Non-Chinese text
+   - Import statements
+   - Type hints
+   - Any actual code behavior
+4. Keep the original formatting and indentation exactly as is
+5. If there is no Chinese text to translate, return the code unchanged
+6. Return ONLY the translated code, no explanations
+
+**Example translations:**
+- `# 初始化配置` → `# Initialize configuration`
+- `logger.info("开始处理数据")` → `logger.info("Start processing data")`
+- `"""这是一个测试函数"""` → `"""This is a test function"""`
+- `print(f"处理完成，共 {{count}} 条")` → `print(f"Processing completed, total {{count}} items")`
+
+Now translate the following Python code:
+
+```python
+{code}
+```
+
+Return the translated Python code:'''
+
+REVIEW_PROMPT = '''You are a code review assistant. Your task is to analyze a git diff and determine if the changes are ONLY translation-related (translating Chinese comments/logs to English) or if there are actual code logic changes.
+
+**Your task:**
+Analyze the following git diff and classify it as one of:
+1. **SAFE** - Changes are purely translation-related:
+   - Chinese comments translated to English (# 中文注释 → # English comment)
+   - Chinese log messages translated to English (logger.info("中文") → logger.info("English"))
+   - Chinese docstrings translated to English
+   - No actual code logic changes
+
+2. **NEEDS_REVIEW** - Changes may include code logic modifications:
+   - Variable names, function names, or class names changed
+   - Code structure modified
+   - Import statements added/removed/changed
+   - Logic conditions or return values changed
+   - Exception handling modified
+   - New code added or existing code removed (beyond comments/logs)
+   - Type hints changed
+   - Default parameter values changed
+   - Any behavioral changes
+
+**Important:**
+- Whitespace-only changes (indentation, blank lines) are SAFE
+- Formatting changes that don't affect behavior are SAFE
+- If you see ANY potential code logic change, classify as NEEDS_REVIEW
+- When in doubt, classify as NEEDS_REVIEW
+
+**Response format (MUST follow exactly):**
+First line: SAFE or NEEDS_REVIEW
+Second line onwards: Brief explanation of your reasoning (max 2-3 sentences)
+
+**Git diff to analyze:**
+```diff
+{diff}
+```
+
+**Your analysis:**'''
+
+
+# ==============================================================================
+# Review Result Types
+# ==============================================================================
+
+
+class ReviewResult(Enum):
+    """Review result status."""
+
+    SAFE = "safe"
+    NEEDS_REVIEW = "needs_review"
+    ERROR = "error"
+
+
+@dataclass
+class FileReviewResult:
+    """Result of reviewing a single file."""
+
+    file_path: str
+    result: ReviewResult
+    reason: str
+    diff_summary: str = ""
+
+
+# ==============================================================================
+# Common Utilities
+# ==============================================================================
+
+
+def contains_chinese(text: str) -> bool:
+    """Check if text contains Chinese characters."""
+    chinese_pattern = re.compile(r'[\u4e00-\u9fff]')
+    return bool(chinese_pattern.search(text))
+
+
+def create_llm_provider() -> OpenAIProvider:
+    """Create and return an LLM provider instance."""
+    return OpenAIProvider(
+        model=os.getenv("LLM_MODEL", "gpt-4.1-mini"),
+        api_key=os.getenv("LLM_API_KEY"),
+        base_url=os.getenv("LLM_BASE_URL"),
+        temperature=0.1,
+    )
+
+
+def resolve_directories(dir_names: list[str] | None) -> list[Path]:
+    """Resolve directory names to absolute paths."""
+    if not dir_names:
+        return [SRC_DIR]
+
+    directories = []
+    for dir_name in dir_names:
+        dir_path = Path(dir_name)
+        if not dir_path.is_absolute():
+            dir_path = PROJECT_DIR / dir_name
+        directories.append(dir_path)
+    return directories
+
+
+def print_header(title: str):
+    """Print a section header."""
+    print("=" * 70)
+    print(title)
+    print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 70)
+    print()
+
+
+def print_summary_header():
+    """Print summary section header."""
+    print()
+    print("=" * 70)
+    print("Summary")
+    print(f"Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 70)
+
+
+# ==============================================================================
+# File Operations
+# ==============================================================================
+
+
+def should_skip_directory(dir_path: Path, src_dir: Path) -> bool:
+    """Check if a directory should be skipped based on SKIP_DIRECTORIES config."""
+    try:
+        rel_path = dir_path.relative_to(src_dir)
+        rel_path_str = str(rel_path).replace('\\', '/')
+        for skip_dir in SKIP_DIRECTORIES:
+            if rel_path_str == skip_dir or rel_path_str.startswith(skip_dir + '/'):
+                return True
+    except ValueError:
+        pass
+    return False
+
+
+def should_skip_file(file_path: Path, src_dir: Path) -> bool:
+    """Check if a file should be skipped based on SKIP_FILES config."""
+    try:
+        rel_path = file_path.relative_to(src_dir)
+        rel_path_str = str(rel_path).replace('\\', '/')
+        return rel_path_str in SKIP_FILES
+    except ValueError:
+        pass
+    return False
+
+
+def get_python_files(target_dir: Path) -> list[Path]:
+    """Get all Python files under the target directory."""
+    python_files = []
+    skipped_dirs = []
+    skipped_files = []
+
+    for root, dirs, files in os.walk(target_dir):
+        root_path = Path(root)
+
+        # Skip __pycache__ and hidden directories
+        dirs[:] = [d for d in dirs if not d.startswith('.') and d != '__pycache__']
+
+        # Skip configured directories (only for src directory)
+        if target_dir == SRC_DIR:
+            dirs_to_remove = []
+            for d in dirs:
+                dir_path = root_path / d
+                if should_skip_directory(dir_path, SRC_DIR):
+                    dirs_to_remove.append(d)
+                    skipped_dirs.append(dir_path)
+            for d in dirs_to_remove:
+                dirs.remove(d)
+
+        for file in files:
+            if file.endswith('.py'):
+                file_path = Path(root) / file
+                if target_dir == SRC_DIR and should_skip_file(file_path, SRC_DIR):
+                    skipped_files.append(file_path)
+                else:
+                    python_files.append(file_path)
+
+    if skipped_dirs:
+        print(f"Skipped directories: {[str(d) for d in skipped_dirs]}")
+    if skipped_files:
+        print(f"Skipped files: {[str(f) for f in skipped_files]}")
+
+    return python_files
+
+
+def get_python_files_from_directories(directories: list[Path]) -> list[Path]:
+    """Get all Python files from multiple directories."""
+    all_files = []
+    for target_dir in directories:
+        if not target_dir.exists():
+            print(f"Warning: Directory {target_dir} does not exist, skipping")
+            continue
+        print(f"Scanning directory: {target_dir}")
+        files = get_python_files(target_dir)
+        all_files.extend(files)
+        print(f"  Found {len(files)} Python files")
+    return all_files
+
+
+# ==============================================================================
+# Progress Tracking - Translation
+# ==============================================================================
+
+
+def load_translation_progress() -> dict:
+    """Load translation progress from file."""
+    if TRANSLATION_PROGRESS_FILE.exists():
+        try:
+            with open(TRANSLATION_PROGRESS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {"processed": [], "errors": []}
+    return {"processed": [], "errors": []}
+
+
+def save_translation_progress(progress: dict):
+    """Save translation progress to file."""
+    with open(TRANSLATION_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(progress, f, indent=2, ensure_ascii=False)
+
+
+def clear_translation_progress():
+    """Clear translation progress file."""
+    if TRANSLATION_PROGRESS_FILE.exists():
+        TRANSLATION_PROGRESS_FILE.unlink()
+
+
+# ==============================================================================
+# Progress Tracking - Review
+# ==============================================================================
+
+
+def load_review_progress() -> dict:
+    """Load review progress from file."""
+    if REVIEW_PROGRESS_FILE.exists():
+        try:
+            with open(REVIEW_PROGRESS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {"commit_range": "", "safe": [], "needs_review": [], "errors": []}
+    return {"commit_range": "", "safe": [], "needs_review": [], "errors": []}
+
+
+def save_review_progress(progress: dict):
+    """Save review progress to file."""
+    with open(REVIEW_PROGRESS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(progress, f, indent=2, ensure_ascii=False)
+
+
+def clear_review_progress():
+    """Clear review progress file."""
+    if REVIEW_PROGRESS_FILE.exists():
+        REVIEW_PROGRESS_FILE.unlink()
+
+
+# ==============================================================================
+# Git Operations
+# ==============================================================================
+
+
+def run_git_command(args: list[str], cwd: Path | None = None) -> tuple[bool, str]:
+    """Run a git command and return success status and output."""
+    try:
+        result = subprocess.run(
+            ["git"] + args,
+            cwd=cwd or PROJECT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            return True, result.stdout.strip()
+        else:
+            return False, result.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return False, "Git command timed out"
+    except Exception as e:
+        return False, str(e)
+
+
+def get_changed_files_from_git(commit_range: str) -> tuple[bool, list[str]]:
+    """Get list of changed Python files in the commit range."""
+    success, output = run_git_command(
+        ["diff", "--name-only", "--diff-filter=ACMR", commit_range, "--", "*.py"]
+    )
+    if not success:
+        return False, [output]
+    files = [f.strip() for f in output.split("\n") if f.strip()]
+    return True, files
+
+
+def get_file_diff(commit_range: str, file_path: str) -> tuple[bool, str]:
+    """Get the diff for a specific file."""
+    success, output = run_git_command(["diff", commit_range, "--", file_path])
+    return success, output
+
+
+def get_commit_info(commit_ref: str = "HEAD") -> tuple[bool, dict]:
+    """Get information about a commit."""
+    success, hash_output = run_git_command(["rev-parse", "--short", commit_ref])
+    if not success:
+        return False, {"error": hash_output}
+
+    success, message = run_git_command(["log", "-1", "--format=%s", commit_ref])
+    message = message if success else "Unknown"
+
+    success, author = run_git_command(["log", "-1", "--format=%an <%ae>", commit_ref])
+    author = author if success else "Unknown"
+
+    success, date = run_git_command(["log", "-1", "--format=%ci", commit_ref])
+    date = date if success else "Unknown"
+
+    return True, {
+        "hash": hash_output,
+        "message": message,
+        "author": author,
+        "date": date,
+    }
+
+
+# ==============================================================================
+# Translation Functions
+# ==============================================================================
+
+
+def filter_files_with_chinese(
+    python_files: list[Path], progress: dict
+) -> tuple[list[Path], int, int]:
+    """Pre-filter files to only include those with Chinese characters."""
+    files_to_process = []
+    skipped_no_chinese = 0
+    skipped_already_done = 0
+
+    print("Pre-scanning files for Chinese content...")
+    for file_path in python_files:
+        file_str = str(file_path)
+
+        try:
+            file_size = file_path.stat().st_size
+            if file_size > MAX_FILE_SIZE:
+                if file_str not in progress.get("processed", []):
+                    files_to_process.append(file_path)
+                else:
+                    skipped_already_done += 1
+                continue
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            if contains_chinese(content):
+                if file_str in progress.get("processed", []):
+                    progress["processed"].remove(file_str)
+                    print(f"  [RE-PROCESS] {file_path} - Still has Chinese content")
+                files_to_process.append(file_path)
+            else:
+                skipped_no_chinese += 1
+                if file_str not in progress.get("processed", []):
+                    progress["processed"].append(file_str)
+                else:
+                    skipped_already_done += 1
+        except Exception as e:
+            print(f"  Warning: Could not pre-scan {file_path}: {e}")
+            files_to_process.append(file_path)
+
+    save_translation_progress(progress)
+    print(
+        f"Pre-scan complete: {len(files_to_process)} files with Chinese to translate, "
+        f"{skipped_no_chinese} without Chinese (skipped), {skipped_already_done} already done"
+    )
+
+    return files_to_process, skipped_no_chinese, skipped_already_done
+
+
+async def translate_file(
+    provider: OpenAIProvider,
+    file_path: Path,
+    semaphore: asyncio.Semaphore,
+    progress: dict,
+    progress_lock: asyncio.Lock,
+    dry_run: bool = False,
+    index: int = 0,
+    total: int = 0,
+) -> tuple[Path, bool, Optional[str]]:
+    """Translate a single Python file."""
+    file_str = str(file_path)
+    progress_prefix = f"[{index}/{total}]" if total > 0 else ""
+
+    if file_str in progress.get("processed", []):
+        print(f"{progress_prefix} [ALREADY-DONE] {file_path}")
+        return (file_path, True, None)
+
+    async with semaphore:
+        try:
+            file_size = file_path.stat().st_size
+            if file_size > MAX_FILE_SIZE:
+                print(
+                    f"{progress_prefix} [SKIP-LARGE] {file_path} - File too large ({file_size/1024:.1f}KB)"
+                )
+                async with progress_lock:
+                    progress["processed"].append(file_str)
+                    save_translation_progress(progress)
+                return (file_path, True, f"Skipped: file too large")
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                original_content = f.read()
+
+            if not contains_chinese(original_content):
+                print(f"{progress_prefix} [SKIP] {file_path} - No Chinese text found")
+                async with progress_lock:
+                    progress["processed"].append(file_str)
+                    save_translation_progress(progress)
+                return (file_path, True, None)
+
+            print(
+                f"{progress_prefix} [TRANSLATING] {file_path} ({file_size/1024:.1f}KB)"
+            )
+
+            prompt = TRANSLATION_PROMPT.format(code=original_content)
+            translated_content = await provider.generate(prompt, temperature=0.1)
+
+            # Clean up response
+            translated_content = translated_content.strip()
+            if translated_content.startswith('```python'):
+                translated_content = translated_content[9:]
+            if translated_content.startswith('```'):
+                translated_content = translated_content[3:]
+            if translated_content.endswith('```'):
+                translated_content = translated_content[:-3]
+            translated_content = translated_content.strip()
+
+            if (
+                not translated_content
+                or len(translated_content) < len(original_content) * 0.5
+            ):
+                error_msg = "Translation result seems too short or empty"
+                async with progress_lock:
+                    progress["errors"].append({"file": file_str, "error": error_msg})
+                    save_translation_progress(progress)
+                return (file_path, False, error_msg)
+
+            if not dry_run:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(translated_content)
+                print(f"{progress_prefix} [DONE] {file_path}")
+            else:
+                print(f"{progress_prefix} [DRY-RUN] {file_path} - Would translate")
+
+            async with progress_lock:
+                progress["processed"].append(file_str)
+                save_translation_progress(progress)
+            return (file_path, True, None)
+
+        except Exception as e:
+            error_msg = str(e)
+            print(f"{progress_prefix} [ERROR] {file_path}: {error_msg}")
+            async with progress_lock:
+                progress["errors"].append({"file": file_str, "error": error_msg})
+                save_translation_progress(progress)
+            return (file_path, False, error_msg)
+
+
+# ==============================================================================
+# Review Functions
+# ==============================================================================
+
+
+async def review_file_diff(
+    provider: OpenAIProvider,
+    file_path: str,
+    diff: str,
+    semaphore: asyncio.Semaphore,
+    progress: dict,
+    progress_lock: asyncio.Lock,
+    verbose: bool = False,
+    index: int = 0,
+    total: int = 0,
+) -> FileReviewResult:
+    """Review a single file diff using LLM."""
+    progress_prefix = f"[{index}/{total}]" if total > 0 else ""
+
+    async with semaphore:
+        try:
+            if len(diff) > 50 * 1024:
+                result = FileReviewResult(
+                    file_path=file_path,
+                    result=ReviewResult.NEEDS_REVIEW,
+                    reason="Diff too large for automated analysis",
+                    diff_summary=f"Diff size: {len(diff) / 1024:.1f}KB",
+                )
+                async with progress_lock:
+                    progress["needs_review"].append(
+                        {"file": file_path, "reason": result.reason}
+                    )
+                    save_review_progress(progress)
+                print(f"{progress_prefix} [NEEDS-REVIEW] {file_path} - Diff too large")
+                return result
+
+            if not diff.strip():
+                result = FileReviewResult(
+                    file_path=file_path,
+                    result=ReviewResult.SAFE,
+                    reason="No changes in diff",
+                    diff_summary="Empty diff",
+                )
+                async with progress_lock:
+                    progress["safe"].append(file_path)
+                    save_review_progress(progress)
+                print(f"{progress_prefix} [SAFE] {file_path} - Empty diff")
+                return result
+
+            if verbose:
+                print(f"{progress_prefix} [ANALYZING] {file_path}")
+            else:
+                print(f"{progress_prefix} [ANALYZING] {file_path}")
+
+            prompt = REVIEW_PROMPT.format(diff=diff)
+            response = await provider.generate(prompt, temperature=0.1)
+            response = response.strip()
+
+            lines = response.split("\n", 1)
+            first_line = lines[0].strip().upper()
+            reason = lines[1].strip() if len(lines) > 1 else "No explanation provided"
+
+            if "SAFE" in first_line and "NEEDS" not in first_line:
+                review_result = ReviewResult.SAFE
+            else:
+                review_result = ReviewResult.NEEDS_REVIEW
+                if "SAFE" not in first_line and "REVIEW" not in first_line:
+                    reason = f"Unclear response: {first_line}. {reason}"
+
+            diff_lines = diff.split("\n")
+            diff_summary = "\n".join(diff_lines[:10])
+            if len(diff_lines) > 10:
+                diff_summary += f"\n... ({len(diff_lines) - 10} more lines)"
+
+            result = FileReviewResult(
+                file_path=file_path,
+                result=review_result,
+                reason=reason,
+                diff_summary=diff_summary,
+            )
+
+            # Save progress
+            async with progress_lock:
+                if review_result == ReviewResult.SAFE:
+                    progress["safe"].append(file_path)
+                    print(f"{progress_prefix} [SAFE] {file_path}")
+                else:
+                    progress["needs_review"].append(
+                        {"file": file_path, "reason": reason}
+                    )
+                    print(f"{progress_prefix} [NEEDS-REVIEW] {file_path}")
+                save_review_progress(progress)
+
+            return result
+
+        except Exception as e:
+            result = FileReviewResult(
+                file_path=file_path,
+                result=ReviewResult.ERROR,
+                reason=f"Error during analysis: {str(e)}",
+            )
+            async with progress_lock:
+                progress["errors"].append({"file": file_path, "error": str(e)})
+                save_review_progress(progress)
+            print(f"{progress_prefix} [ERROR] {file_path}: {e}")
+            return result
+
+
+# ==============================================================================
+# Command: translate
+# ==============================================================================
+
+
+async def cmd_translate(
+    directories: list[Path],
+    max_concurrency: int = 5,
+    dry_run: bool = False,
+    specific_files: list[str] | None = None,
+    reset_progress: bool = False,
+):
+    """Execute the translate command."""
+    print_header("Chinese to English Translation")
+
+    print("CRITICAL RULES:")
+    print("  1. DO NOT modify any code logic")
+    print("  2. Only translate Chinese comments and log messages")
+    print("  3. Preserve all code structure and behavior")
+    print()
+    print(f"Target directories: {[str(d) for d in directories]}")
+    print()
+
+    if reset_progress:
+        clear_translation_progress()
+        print("Progress cleared, starting fresh")
+    progress = load_translation_progress()
+    if progress.get("processed"):
+        print(
+            f"Resuming from previous run: {len(progress['processed'])} files already processed"
+        )
+
+    provider = create_llm_provider()
+
+    if specific_files:
+        python_files = [Path(f) for f in specific_files]
+    else:
+        python_files = get_python_files_from_directories(directories)
+
+    python_files.sort()
+    total_files = len(python_files)
+    print(f"Found {total_files} Python files in total")
+    print(f"Max concurrency: {max_concurrency}")
+    print(f"Max file size: {MAX_FILE_SIZE/1024:.1f}KB")
+    print(f"Dry run: {dry_run}")
+    print()
+
+    files_to_process, skipped_no_chinese, skipped_already_done = (
+        filter_files_with_chinese(python_files, progress)
+    )
+
+    if not files_to_process:
+        print("No files with Chinese content to process!")
+        return 0
+
+    print()
+    print(f"Files to translate: {len(files_to_process)}")
+    print()
+
+    semaphore = asyncio.Semaphore(max_concurrency)
+    progress_lock = asyncio.Lock()
+
+    tasks = [
+        translate_file(
+            provider,
+            file_path,
+            semaphore,
+            progress,
+            progress_lock,
+            dry_run,
+            index=idx + 1,
+            total=len(files_to_process),
+        )
+        for idx, file_path in enumerate(files_to_process)
+    ]
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    success_count = 0
+    error_count = 0
+    errors = []
+
+    for result in results:
+        if isinstance(result, Exception):
+            error_count += 1
+            errors.append(str(result))
+        else:
+            file_path, success, error_msg = result
+            if success:
+                success_count += 1
+            else:
+                error_count += 1
+                errors.append(f"{file_path}: {error_msg}")
+
+    print_summary_header()
+    print(f"Total Python files found: {total_files}")
+    print(f"Files skipped (no Chinese): {skipped_no_chinese}")
+    print(f"Files skipped (already done): {skipped_already_done}")
+    print(f"Files translated this run: {len(files_to_process)}")
+    print(f"Successfully processed: {success_count}")
+    print(f"Errors: {error_count}")
+    print(
+        f"Total processed (including previous runs): {len(progress.get('processed', []))}"
+    )
+
+    if errors:
+        print()
+        print("Errors encountered:")
+        for error in errors[:20]:
+            print(f"  - {error}")
+        if len(errors) > 20:
+            print(f"  ... and {len(errors) - 20} more errors")
+
+    print()
+    print(f"Progress saved to: {TRANSLATION_PROGRESS_FILE}")
+    print("Run with --reset to start fresh")
+    return 0 if error_count == 0 else 1
+
+
+# ==============================================================================
+# Command: check
+# ==============================================================================
+
+
+def cmd_check(directories: list[Path], specific_files: list[str] | None = None) -> int:
+    """Execute the check command."""
+    print_header("Chinese Content Check")
+
+    if specific_files:
+        python_files = [Path(f) for f in specific_files]
+    else:
+        python_files = get_python_files_from_directories(directories)
+
+    python_files.sort()
+    total_files = len(python_files)
+    print(f"Scanning {total_files} Python files for Chinese content...")
+    print()
+
+    files_with_chinese = []
+    files_checked = 0
+
+    for file_path in python_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+
+            files_checked += 1
+
+            if contains_chinese(content):
+                lines_with_chinese = []
+                for line_num, line in enumerate(content.split('\n'), 1):
+                    if contains_chinese(line):
+                        lines_with_chinese.append((line_num, line.strip()[:80]))
+
+                files_with_chinese.append(
+                    {
+                        'path': file_path,
+                        'lines': lines_with_chinese,
+                        'total_chinese_lines': len(lines_with_chinese),
+                    }
+                )
+
+        except Exception as e:
+            print(f"  [ERROR] Could not read {file_path}: {e}")
+
+    print("=" * 70)
+    print("Check Results")
+    print("=" * 70)
+    print(f"Total files checked: {files_checked}")
+    print(f"Files with Chinese: {len(files_with_chinese)}")
+    print()
+
+    if files_with_chinese:
+        print("Files containing Chinese characters:")
+        print("-" * 70)
+        for file_info in files_with_chinese:
+            print(f"\n📄 {file_info['path']}")
+            print(f"   ({file_info['total_chinese_lines']} lines with Chinese)")
+            for line_num, line_content in file_info['lines'][:5]:
+                print(f"   Line {line_num}: {line_content}...")
+            if len(file_info['lines']) > 5:
+                print(f"   ... and {len(file_info['lines']) - 5} more lines")
+        print()
+        print("-" * 70)
+        print(f"❌ Found {len(files_with_chinese)} files with Chinese content")
+        print("   Run 'translate' command to translate them")
+    else:
+        print("✅ No Chinese content found in any Python files!")
+
+    return len(files_with_chinese)
+
+
+# ==============================================================================
+# Command: review
+# ==============================================================================
+
+
+async def cmd_review(
+    commit_range: str = "HEAD",
+    max_concurrency: int = 5,
+    verbose: bool = False,
+    dry_run: bool = False,
+    reset_progress: bool = False,
+) -> int:
+    """Execute the review command."""
+    print_header("Translation Changes Review")
+
+    # Normalize commit range
+    if ".." not in commit_range:
+        commit_range = f"{commit_range}~1..{commit_range}"
+
+    commit_ref = commit_range.split("..")[-1]
+    success, commit_info = get_commit_info(commit_ref)
+    if success:
+        print(f"Reviewing commit: {commit_info['hash']}")
+        print(f"  Message: {commit_info['message']}")
+        print(f"  Author: {commit_info['author']}")
+        print(f"  Date: {commit_info['date']}")
+    print(f"Commit range: {commit_range}")
+    print()
+
+    # Handle progress
+    if reset_progress:
+        clear_review_progress()
+        print("Progress cleared, starting fresh")
+
+    progress = load_review_progress()
+
+    # Check if we're resuming a different commit range
+    if progress.get("commit_range") and progress.get("commit_range") != commit_range:
+        print(
+            f"Previous review was for different commit range: {progress['commit_range']}"
+        )
+        print("Clearing progress and starting fresh for new commit range")
+        clear_review_progress()
+        progress = load_review_progress()
+
+    progress["commit_range"] = commit_range
+
+    print("Getting changed Python files...")
+    success, files = get_changed_files_from_git(commit_range)
+    if not success:
+        print(f"Error getting changed files: {files[0] if files else 'Unknown error'}")
+        return 1
+
+    if not files:
+        print("No Python files changed in this commit range.")
+        return 0
+
+    # Filter out already processed files
+    already_processed = set(progress.get("safe", []))
+    already_processed.update(item["file"] for item in progress.get("needs_review", []))
+    already_processed.update(item["file"] for item in progress.get("errors", []))
+
+    files_to_process = [f for f in files if f not in already_processed]
+
+    print(f"Found {len(files)} changed Python file(s) total:")
+    for f in files:
+        status = ""
+        if f in progress.get("safe", []):
+            status = " [already: SAFE]"
+        elif f in [item["file"] for item in progress.get("needs_review", [])]:
+            status = " [already: NEEDS-REVIEW]"
+        elif f in [item["file"] for item in progress.get("errors", [])]:
+            status = " [already: ERROR]"
+        print(f"  - {f}{status}")
+    print()
+
+    if already_processed:
+        print(
+            f"Resuming from previous run: {len(already_processed)} files already processed"
+        )
+        print(f"Files remaining to process: {len(files_to_process)}")
+        print()
+
+    if dry_run:
+        print("[DRY-RUN] Skipping LLM analysis")
+        return 0
+
+    if not files_to_process:
+        print("All files already processed!")
+    else:
+        provider = create_llm_provider()
+
+        print("Analyzing changes with LLM...")
+        print()
+        semaphore = asyncio.Semaphore(max_concurrency)
+        progress_lock = asyncio.Lock()
+        tasks = []
+
+        for idx, file_path in enumerate(files_to_process):
+            success, diff = get_file_diff(commit_range, file_path)
+            if not success:
+
+                async def make_error_result(
+                    fp=file_path, err=diff, prog=progress, lock=progress_lock
+                ):
+                    async with lock:
+                        prog["errors"].append(
+                            {"file": fp, "error": f"Error getting diff: {err}"}
+                        )
+                        save_review_progress(prog)
+                    return FileReviewResult(
+                        file_path=fp,
+                        result=ReviewResult.ERROR,
+                        reason=f"Error getting diff: {err}",
+                    )
+
+                tasks.append(make_error_result())
+            else:
+                tasks.append(
+                    review_file_diff(
+                        provider,
+                        file_path,
+                        diff,
+                        semaphore,
+                        progress,
+                        progress_lock,
+                        verbose,
+                        index=idx + 1,
+                        total=len(files_to_process),
+                    )
+                )
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Reload progress to get final results
+    progress = load_review_progress()
+
+    # Build result lists from progress
+    safe_files = [
+        FileReviewResult(file_path=f, result=ReviewResult.SAFE, reason="")
+        for f in progress.get("safe", [])
+    ]
+    needs_review_files = [
+        FileReviewResult(
+            file_path=item["file"],
+            result=ReviewResult.NEEDS_REVIEW,
+            reason=item["reason"],
+        )
+        for item in progress.get("needs_review", [])
+    ]
+    error_files = [
+        FileReviewResult(
+            file_path=item["file"],
+            result=ReviewResult.ERROR,
+            reason=item.get("error", "Unknown error"),
+        )
+        for item in progress.get("errors", [])
+    ]
+
+    print()
+    print("=" * 70)
+    print("Review Results")
+    print("=" * 70)
+    print()
+
+    if needs_review_files:
+        print("🔴 FILES NEEDING MANUAL REVIEW (possible code changes):")
+        print("-" * 70)
+        for r in needs_review_files:
+            print(f"\n📄 {r.file_path}")
+            print(f"   Reason: {r.reason}")
+        print()
+
+    if safe_files:
+        print("🟢 SAFE FILES (translation only, no review needed):")
+        print("-" * 70)
+        for r in safe_files:
+            print(f"  ✓ {r.file_path}")
+        print()
+
+    if error_files:
+        print("⚠️  ERROR FILES (could not analyze):")
+        print("-" * 70)
+        for r in error_files:
+            print(f"  ✗ {r.file_path}: {r.reason}")
+        print()
+
+    print("=" * 70)
+    print("Summary")
+    print("=" * 70)
+    print(f"  Total files in commit: {len(files)}")
+    print(f"  🟢 Safe (no review needed): {len(safe_files)}")
+    print(f"  🔴 Needs review: {len(needs_review_files)}")
+    print(f"  ⚠️  Errors: {len(error_files)}")
+    print()
+    print(f"Progress saved to: {REVIEW_PROGRESS_FILE}")
+    print("Run with --reset to start fresh")
+    print()
+
+    if needs_review_files:
+        print("⚠️  Please manually review the files marked with 🔴")
+        print("   These files may contain unintended code changes.")
+        return 1
+    else:
+        print("✅ All changes appear to be translation-only.")
+        return 0
+
+
+# ==============================================================================
+# Main Entry Point
+# ==============================================================================
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="I18N Tool - Chinese to English translation and review tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Translate command
+    translate_parser = subparsers.add_parser(
+        "translate", help="Translate Chinese comments/logs to English in Python files"
+    )
+    translate_parser.add_argument(
+        "--directory",
+        "-d",
+        nargs="*",
+        help="Directories to scan (relative to project root). Default: src",
+    )
+    translate_parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=5,
+        help="Maximum concurrent translations (default: 5)",
+    )
+    translate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Don't write changes, just show what would be done",
+    )
+    translate_parser.add_argument(
+        "--files", nargs="*", help="Specific files to translate (optional)"
+    )
+    translate_parser.add_argument(
+        "--reset", action="store_true", help="Clear previous progress and start fresh"
+    )
+
+    # Check command
+    check_parser = subparsers.add_parser(
+        "check", help="Check for remaining Chinese content in Python files"
+    )
+    check_parser.add_argument(
+        "--directory",
+        "-d",
+        nargs="*",
+        help="Directories to scan (relative to project root). Default: src",
+    )
+    check_parser.add_argument(
+        "--files", nargs="*", help="Specific files to check (optional)"
+    )
+
+    # Review command
+    review_parser = subparsers.add_parser(
+        "review", help="Review git commits to verify translation changes"
+    )
+    review_parser.add_argument(
+        "--commit",
+        "-c",
+        default="HEAD",
+        help="Git commit or range to review (default: HEAD)",
+    )
+    review_parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=5,
+        help="Maximum concurrent LLM calls (default: 5)",
+    )
+    review_parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show verbose output including diff previews",
+    )
+    review_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Only list changed files without LLM analysis",
+    )
+    review_parser.add_argument(
+        "--reset", action="store_true", help="Clear previous progress and start fresh"
+    )
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(1)
+
+    if args.command == "translate":
+        directories = resolve_directories(args.directory)
+        exit_code = asyncio.run(
+            cmd_translate(
+                directories=directories,
+                max_concurrency=args.max_concurrency,
+                dry_run=args.dry_run,
+                specific_files=args.files,
+                reset_progress=args.reset,
+            )
+        )
+        sys.exit(exit_code)
+
+    elif args.command == "check":
+        directories = resolve_directories(args.directory)
+        exit_code = cmd_check(directories=directories, specific_files=args.files)
+        sys.exit(0 if exit_code == 0 else 1)
+
+    elif args.command == "review":
+        exit_code = asyncio.run(
+            cmd_review(
+                commit_range=args.commit,
+                max_concurrency=args.max_concurrency,
+                verbose=args.verbose,
+                dry_run=args.dry_run,
+                reset_progress=args.reset,
+            )
+        )
+        sys.exit(exit_code)
+
+
+if __name__ == "__main__":
+    main()

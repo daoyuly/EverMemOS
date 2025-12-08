@@ -1,12 +1,12 @@
 """
-数据库操作和数据转换相关函数
-从 mem_memorize.py 中提取的数据库操作和数据转换逻辑
+Database operations and data conversion functions.
+Extracted from mem_memorize.py for database operations and data conversion logic.
 
-本模块包含以下功能：
-1. 时间处理函数：统一处理各种时间格式，确保数据库存储的时间格式一致性
-2. 数据转换函数：将业务层对象转换为数据库文档格式
-3. 数据库操作函数：执行具体的数据库CRUD操作
-4. 状态表操作函数：管理对话状态的生命周期
+This module contains the following features:
+1. Time processing functions: Unified handling of various time formats to ensure consistency in database storage
+2. Data conversion functions: Convert business layer objects to database document format
+3. Database operation functions: Execute specific database CRUD operations
+4. Status table operation functions: Manage the lifecycle of conversation status
 """
 
 import time
@@ -67,44 +67,44 @@ from api_specs.memory_types import RawDataType
 
 logger = get_logger(__name__)
 
-# ==================== 时间处理函数 ====================
+# ==================== Time Processing Functions ====================
 
 
 def _normalize_datetime_for_storage(
     timestamp: Any, current_time: Optional[datetime] = None
 ) -> datetime:
     """
-    将各种时间格式统一转换为本地时区时间datetime对象（带时区信息，用于数据库存储）
+    Convert various time formats to local timezone datetime object (with timezone info, for database storage).
 
-    使用场景：
-    - 在保存数据到数据库前，确保时间字段格式统一
-    - 处理来自不同来源的时间数据（字符串、时间戳、datetime对象）
-    - 避免时区不一致导致的数据错误
+    Use cases:
+    - Ensure uniform time field format before saving data to database
+    - Handle time data from different sources (string, timestamp, datetime object)
+    - Avoid data errors caused by timezone inconsistency
 
     Args:
-        timestamp: 输入的时间数据，支持datetime、str、int、float类型
-        current_time: 备用时间，当转换失败时使用
+        timestamp: Input time data, supports datetime, str, int, float types
+        current_time: Fallback time, used when conversion fails
 
     Returns:
-        datetime: 带时区信息的datetime对象
+        datetime: Datetime object with timezone information
     """
     try:
         if not timestamp:
             return None
         if isinstance(timestamp, datetime):
-            # 如果是datetime对象，使用to_timezone转换为本地时区
+            # If datetime object, use to_timezone to convert to local timezone
             return to_timezone(timestamp)
         elif isinstance(timestamp, str):
-            # 字符串格式，使用from_iso_format解析
+            # String format, use from_iso_format to parse
             return from_iso_format(timestamp)
         elif isinstance(timestamp, (int, float)):
-            # 数字时间戳，使用from_timestamp转换（毫秒转秒）
+            # Numeric timestamp, use from_timestamp to convert (milliseconds to seconds)
             return from_timestamp(timestamp / 1000)
         else:
-            # 其他类型，返回当前本地时间
+            # Other types, return current local time
             return current_time if current_time else get_now_with_timezone()
     except Exception as e:
-        logger.debug(f"时间格式化失败: {timestamp}, 错误: {e}")
+        logger.debug(f"Time formatting failed: {timestamp}, error: {e}")
         return current_time if current_time else get_now_with_timezone()
 
 
@@ -112,56 +112,56 @@ def _convert_timestamp_to_time(
     timestamp: Any, current_time: Optional[datetime] = None
 ) -> str:
     """
-    将时间戳转换为ISO格式时间字符串，支持多种输入格式
+    Convert timestamp to ISO format time string, supports multiple input formats.
 
-    使用场景：
-    - 从数据库读取的时间数据转换为标准ISO格式
-    - 业务层对象时间字段的格式化输出
-    - API响应中时间字段的统一格式化
+    Use cases:
+    - Convert time data read from database to standard ISO format
+    - Format output of time fields in business layer objects
+    - Unified formatting of time fields in API responses
 
     Args:
-        timestamp: 输入的时间数据，支持datetime、str、int、float类型
-        current_time: 备用时间，当转换失败时使用
+        timestamp: Input time data, supports datetime, str, int, float types
+        current_time: Fallback time, used when conversion fails
 
     Returns:
-        str: ISO格式的时间字符串
+        str: ISO format time string
     """
     try:
         if not timestamp:
             return None
         if isinstance(timestamp, datetime):
-            # 如果是datetime对象，使用to_iso_format转换
+            # If datetime object, use to_iso_format to convert
             return to_iso_format(timestamp)
         elif isinstance(timestamp, (int, float)):
-            # 如果是数字时间戳（毫秒），先转换为datetime再转ISO
+            # If numeric timestamp (milliseconds), convert to datetime first then to ISO
             dt = from_timestamp(timestamp / 1000)
             return to_iso_format(dt)
         elif isinstance(timestamp, str):
-            # 如果是字符串，尝试解析为datetime再转ISO
+            # If string, try to parse as datetime then convert to ISO
             try:
                 dt = from_iso_format(timestamp)
                 return to_iso_format(dt)
             except:
-                # 如果解析失败，直接返回字符串
+                # If parsing fails, return string directly
                 return timestamp
         else:
-            # 其他类型，返回当前时间的ISO格式
+            # Other types, return current time in ISO format
             return to_iso_format(
                 current_time if current_time else get_now_with_timezone()
             )
     except Exception as e:
-        logger.debug(f"时间戳转换失败: {timestamp}, 错误: {e}")
+        logger.debug(f"Timestamp conversion failed: {timestamp}, error: {e}")
         return to_iso_format(current_time if current_time else get_now_with_timezone())
 
 
-# ==================== 数据转换函数 ====================
+# ==================== Data Conversion Functions ====================
 
 
 def _convert_importance_evidence_to_document(
     importance_evidence_list: List[ImportanceEvidence],
 ) -> List[Dict[str, Any]]:
     """
-    将ImportanceEvidence转换为数据库文档格式
+    Convert ImportanceEvidence to database document format.
     """
     if not importance_evidence_list:
         return None
@@ -181,7 +181,7 @@ def _convert_document_to_importance_evidence(
     importance_evidence_list: List[Dict[str, Any]]
 ) -> List[ImportanceEvidence]:
     """
-    将数据库文档格式转换为ImportanceEvidence
+    Convert database document format to ImportanceEvidence.
     """
     if not importance_evidence_list:
         return None
@@ -201,7 +201,7 @@ def _convert_group_importance_evidence_to_document(
     group_importance_evidence: GroupImportanceEvidence,
 ) -> Dict[str, Any]:
     """
-    将GroupImportanceEvidence转换为数据库文档格式
+    Convert GroupImportanceEvidence to database document format.
     """
     if not group_importance_evidence:
         return None
@@ -218,7 +218,7 @@ def _convert_document_to_group_importance_evidence(
     group_importance_evidence: Dict[str, Any]
 ) -> GroupImportanceEvidence:
     """
-    将数据库文档格式转换为GroupImportanceEvidence
+    Convert database document format to GroupImportanceEvidence.
     """
     if not group_importance_evidence:
         return None
@@ -235,30 +235,30 @@ def _convert_episode_memory_to_doc(
     episode_memory: Any, current_time: Optional[datetime] = None
 ) -> EpisodicMemory:
     """
-    将EpisodeMemory业务对象转换为EpisodicMemory数据库文档格式
+    Convert EpisodeMemory business object to EpisodicMemory database document format.
 
-    使用场景：
-    - 保存情景记忆到EpisodicMemoryRawRepository之前的格式转换
-    - 确保业务层Memory对象符合数据库文档模型的字段要求
-    - 处理时间戳格式和扩展字段的映射
+    Use cases:
+    - Format conversion before saving episodic memory to EpisodicMemoryRawRepository
+    - Ensure business layer Memory objects meet database document model field requirements
+    - Handle timestamp format and extension field mapping
 
     Args:
-        episode_memory: 业务层的EpisodeMemory对象
-        current_time: 当前时间，用于时间戳解析失败时的备用值
+        episode_memory: Business layer EpisodeMemory object
+        current_time: Current time, used as fallback when timestamp parsing fails
 
     Returns:
-        EpisodicMemory: 数据库文档格式的情景记忆对象
+        EpisodicMemory: Episodic memory object in database document format
     """
     from infra_layer.adapters.out.persistence.document.memory.episodic_memory import (
         EpisodicMemory,
     )
     from agentic_layer.vectorize_service import get_vectorize_service
 
-    # 解析时间戳为datetime对象
+    # Parse timestamp to datetime object
     if current_time is None:
         current_time = get_now_with_timezone()
 
-    # 默认使用 current_time
+    # Default to using current_time
     timestamp_dt = current_time
 
     if hasattr(episode_memory, 'timestamp') and episode_memory.timestamp:
@@ -268,14 +268,14 @@ def _convert_episode_memory_to_doc(
             elif isinstance(episode_memory.timestamp, str):
                 timestamp_dt = from_iso_format(episode_memory.timestamp)
             elif isinstance(episode_memory.timestamp, (int, float)):
-                # 如果是数字时间戳（毫秒），转换为datetime
+                # If numeric timestamp (milliseconds), convert to datetime
                 timestamp_dt = from_timestamp(episode_memory.timestamp / 1000)
         except Exception as e:
-            logger.debug(f"时间戳转换失败，使用当前时间: {e}")
+            logger.debug(f"Timestamp conversion failed, using current time: {e}")
             timestamp_dt = current_time
 
     return EpisodicMemory(
-        user_id=episode_memory.user_id,  # 保持 None 或实际值，不转换为空字符串
+        user_id=episode_memory.user_id,  # Keep None or actual value, do not convert to empty string
         user_name=episode_memory.user_name or '',
         group_id=episode_memory.group_id,
         group_name=episode_memory.group_name,
@@ -303,20 +303,18 @@ def _convert_episode_memory_to_doc(
 
 
 def _convert_foresight_to_doc(
-    foresight: Any,
-    parent_doc: EpisodicMemory,
-    current_time: Optional[datetime] = None,
+    foresight: Any, parent_doc: EpisodicMemory, current_time: Optional[datetime] = None
 ) -> ForesightRecord:
     """
-    将ForesightItem业务对象转换为统一前瞻文档格式
+    Convert ForesightItem business object to unified foresight document format.
 
     Args:
-        foresight: 业务层的ForesightItem对象
-        parent_doc: 父情景记忆文档
-        current_time: 当前时间
+        foresight: Business layer ForesightItem object
+        parent_doc: Parent episodic memory document
+        current_time: Current time
 
     Returns:
-        ForesightRecord: 数据库文档格式的前瞻对象
+        ForesightRecord: Foresight object in database document format
     """
 
     if current_time is None:
@@ -346,15 +344,15 @@ def _convert_event_log_to_docs(
     event_log: Any, parent_doc: EpisodicMemory, current_time: Optional[datetime] = None
 ) -> List["EventLogRecord"]:
     """
-    将EventLog业务对象转换为通用事件日志文档列表
+    Convert EventLog business object to generic event log document list.
 
     Args:
-        event_log: 业务层的EventLog对象
-        parent_doc: 父情景记忆文档
-        current_time: 当前时间
+        event_log: Business layer EventLog object
+        parent_doc: Parent episodic memory document
+        current_time: Current time
 
     Returns:
-        List[EventLogRecord]: 数据库文档格式的事件日志对象列表
+        List[EventLogRecord]: List of event log objects in database document format
     """
     if current_time is None:
         current_time = get_now_with_timezone()
@@ -394,33 +392,33 @@ def _convert_group_profile_data_to_profile_format(
     group_profile_memory: GroupProfileMemory,
 ) -> Dict[str, Any]:
     """
-    将GroupProfileMemory的数据格式转换为GroupProfile期望的格式
+    Convert GroupProfileMemory data format to the format expected by GroupProfile.
 
-    使用场景：
-    - 保存GroupProfileMemory到GroupProfileRawRepository之前的格式转换
-    - 处理不同数据结构之间的字段映射和类型转换
-    - 确保时间戳格式的统一性
+    Use cases:
+    - Format conversion before saving GroupProfileMemory to GroupProfileRawRepository
+    - Handle field mapping and type conversion between different data structures
+    - Ensure timestamp format consistency
 
     Args:
-        group_profile_memory: 业务层的GroupProfileMemory对象
+        group_profile_memory: Business layer GroupProfileMemory object
 
     Returns:
-        dict: 包含转换后数据的字典，键为GroupProfile字段名
+        dict: Dictionary containing converted data, keys are GroupProfile field names
     """
     from infra_layer.adapters.out.persistence.document.memory.group_profile import (
         TopicInfo as DocTopicInfo,
     )
 
-    # 处理 topics 转换：从 business TopicInfo 转为 document TopicInfo
-    # 修复：初始化为空列表而不是 None，避免空列表被保存为 None
+    # Handle topics conversion: from business TopicInfo to document TopicInfo
+    # Fix: Initialize as empty list instead of None to avoid empty list being saved as None
     topics = []
     if (
         hasattr(group_profile_memory, 'topics')
         and group_profile_memory.topics is not None
     ):
         for topic in group_profile_memory.topics:
-            if hasattr(topic, 'name'):  # 业务层 TopicInfo 对象
-                # 确保 last_active_at 是 datetime 对象
+            if hasattr(topic, 'name'):  # Business layer TopicInfo object
+                # Ensure last_active_at is datetime object
                 last_active_at = topic.last_active_at
                 if isinstance(last_active_at, str):
                     try:
@@ -449,15 +447,15 @@ def _convert_group_profile_data_to_profile_format(
                 )
                 topics.append(doc_topic)
             elif isinstance(topic, dict):
-                # 已经是字典格式，直接创建 DocTopicInfo
+                # Already in dict format, create DocTopicInfo directly
                 topics.append(DocTopicInfo(**topic))
 
-    # 处理 roles 转换：从 Dict 转换为 RoleAssignment 对象
+    # Handle roles conversion: from Dict to RoleAssignment objects
     from infra_layer.adapters.out.persistence.document.memory.group_profile import (
         RoleAssignment,
     )
 
-    # 修复：初始化为空字典而不是 None，避免空字典被保存为 None
+    # Fix: Initialize as empty dict instead of None to avoid empty dict being saved as None
     roles = {}
     if (
         hasattr(group_profile_memory, 'roles')
@@ -467,7 +465,7 @@ def _convert_group_profile_data_to_profile_format(
             role_assignments = []
             for assignment in assignments:
                 if isinstance(assignment, dict):
-                    # 从字典创建 RoleAssignment 对象
+                    # Create RoleAssignment object from dict
                     role_assignment = RoleAssignment(
                         user_id=assignment.get('user_id', ''),
                         user_name=assignment.get('user_name', ''),
@@ -476,13 +474,13 @@ def _convert_group_profile_data_to_profile_format(
                     )
                     role_assignments.append(role_assignment)
                 else:
-                    # 如果已经是对象，直接添加
+                    # If already an object, add directly
                     role_assignments.append(assignment)
             if role_assignments:
                 roles[role_name] = role_assignments
 
-    # 处理时间戳：确保是整数毫秒时间戳
-    # TODO: 重构专项：timestamp 应保持为datetime 而不是转为int
+    # Handle timestamp: ensure it's integer milliseconds timestamp
+    # TODO: Refactoring: timestamp should remain as datetime instead of converting to int
     timestamp = None
     if hasattr(group_profile_memory, 'timestamp') and group_profile_memory.timestamp:
         if isinstance(group_profile_memory.timestamp, datetime):
@@ -500,12 +498,12 @@ def _convert_group_profile_data_to_profile_format(
 
                 timestamp = int(get_now_with_timezone().timestamp() * 1000)
     else:
-        # 使用当前时间作为默认值
+        # Use current time as default value
         from common_utils.datetime_utils import get_now_with_timezone
 
         timestamp = int(get_now_with_timezone().timestamp() * 1000)
 
-    # 提取其他字段
+    # Extract other fields
     group_name = getattr(group_profile_memory, 'group_name', None)
     subject = getattr(group_profile_memory, 'theme', None) or getattr(
         group_profile_memory, 'subject', None
@@ -526,17 +524,17 @@ def _convert_group_profile_data_to_profile_format(
 
 def _convert_document_to_project_info(project_info: Dict[str, str]) -> ProjectInfo:
     """
-    将数据库文档格式转换为ProjectInfo
+    Convert database document format to ProjectInfo.
     """
     if not project_info:
         return None
 
     def _process_field_with_evidences(value):
-        """处理包含 evidences 的字段，保持 List[Dict[str, Any]] 格式"""
+        """Process fields containing evidences, maintain List[Dict[str, Any]] format"""
         if value is None:
             return None
 
-        # 如果已经是包含 value/evidences 的字典列表，直接返回
+        # If already a dict list containing value/evidences, return directly
         if isinstance(value, list):
             if (
                 value
@@ -544,10 +542,10 @@ def _convert_document_to_project_info(project_info: Dict[str, str]) -> ProjectIn
                 and ("value" in value[0] or "evidences" in value[0])
             ):
                 return value
-            # 如果是普通字符串列表或其他类型列表，转换为 value/evidences 格式
+            # If plain string list or other type list, convert to value/evidences format
             return [{"value": str(item), "evidences": []} for item in value if item]
 
-        # 如果是字符串，尝试解析
+        # If string, try to parse
         if isinstance(value, str):
             if not value.strip():
                 return None
@@ -556,7 +554,7 @@ def _convert_document_to_project_info(project_info: Dict[str, str]) -> ProjectIn
 
                 parsed_value = ast.literal_eval(value)
                 if isinstance(parsed_value, list):
-                    # 检查是否已经是规范格式
+                    # Check if already in canonical format
                     if (
                         parsed_value
                         and isinstance(parsed_value[0], dict)
@@ -565,14 +563,14 @@ def _convert_document_to_project_info(project_info: Dict[str, str]) -> ProjectIn
                         )
                     ):
                         return parsed_value
-                    # 否则转换为规范格式
+                    # Otherwise convert to canonical format
                     return [
                         {"value": str(item), "evidences": []}
                         for item in parsed_value
                         if item
                     ]
             except (ValueError, SyntaxError):
-                # 解析失败，按逗号分割
+                # Parsing failed, split by comma
                 items = [item.strip() for item in value.split(',') if item.strip()]
                 return [{"value": item, "evidences": []} for item in items]
 
@@ -595,7 +593,7 @@ def _convert_projects_participated_list(
     projects_participated: Optional[List[Dict[str, str]]]
 ) -> List[ProjectInfo]:
     """
-    将数据库中的projects_participated (List[Dict[str, str]]) 转换为 List[ProjectInfo]
+    Convert projects_participated (List[Dict[str, str]]) from database to List[ProjectInfo].
     """
     if not projects_participated:
         return []
@@ -612,26 +610,26 @@ def _convert_projects_participated_list(
 
 def _convert_profile_data_to_core_format(profile_memory: ProfileMemory) -> CoreMemory:
     """
-    将ProfileMemory的数据格式转换为CoreMemory期望的格式
+    Convert ProfileMemory data format to the format expected by CoreMemory.
 
-    使用场景：
-    - 保存用户档案记忆到CoreMemoryRawRepository之前的数据格式转换
-    - 处理技能、性格、项目等字段的数据类型转换
-    - 确保数据符合CoreMemory文档模型的字段定义
+    Use cases:
+    - Data format conversion before saving user profile memory to CoreMemoryRawRepository
+    - Handle data type conversion for fields like skills, personality, projects
+    - Ensure data conforms to CoreMemory document model field definitions
 
     Args:
-        profile_memory: 业务层的ProfileMemory对象
+        profile_memory: Business layer ProfileMemory object
 
     Returns:
-        dict: 包含转换后数据的字典，键为CoreMemory字段名
+        dict: Dictionary containing converted data, keys are CoreMemory field names
     """
 
-    # 转换 hard_skills: 直接使用 profile_memory.hard_skills
+    # Convert hard_skills: use profile_memory.hard_skills directly
     hard_skills = None
     if hasattr(profile_memory, 'hard_skills') and profile_memory.hard_skills:
         hard_skills = profile_memory.hard_skills
 
-    # 转换 soft_skills: 直接使用 profile_memory.soft_skills
+    # Convert soft_skills: use profile_memory.soft_skills directly
     soft_skills = None
     if hasattr(profile_memory, 'soft_skills') and profile_memory.soft_skills:
         soft_skills = profile_memory.soft_skills
@@ -661,7 +659,7 @@ def _convert_profile_data_to_core_format(profile_memory: ProfileMemory) -> CoreM
     if hasattr(profile_memory, 'colloquialism') and profile_memory.colloquialism:
         colloquialism = profile_memory.colloquialism
 
-    # 转换 way_of_decision_making: 直接使用原始数据（已包含evidences）
+    # Convert way_of_decision_making: use raw data directly (already contains evidences)
     way_of_decision_making = None
     if (
         hasattr(profile_memory, 'way_of_decision_making')
@@ -669,13 +667,13 @@ def _convert_profile_data_to_core_format(profile_memory: ProfileMemory) -> CoreM
     ):
         way_of_decision_making = profile_memory.way_of_decision_making
 
-    # 转换 personality: 直接使用原始数据（已包含evidences）
+    # Convert personality: use raw data directly (already contains evidences)
     personality = None
     if hasattr(profile_memory, 'personality') and profile_memory.personality:
         personality = profile_memory.personality
 
-    # 转换 projects_participated: List[ProjectInfo] -> List[Dict[str, Any]]
-    # 注意：ProjectInfo的各字段现在包含evidence-embedded数据，直接使用原始格式
+    # Convert projects_participated: List[ProjectInfo] -> List[Dict[str, Any]]
+    # Note: ProjectInfo fields now contain evidence-embedded data, use raw format directly
     projects_participated = None
     if (
         hasattr(profile_memory, 'projects_participated')
@@ -685,7 +683,7 @@ def _convert_profile_data_to_core_format(profile_memory: ProfileMemory) -> CoreM
             projects_participated = []
             for project in profile_memory.projects_participated:
                 if hasattr(project, 'project_id'):  # ProjectInfo object
-                    # 直接使用原始数据，保留evidence-embedded格式
+                    # Use raw data directly, preserve evidence-embedded format
                     user_objective = getattr(project, 'user_objective', None)
                     contributions = getattr(project, 'contributions', None)
                     subtasks = getattr(project, 'subtasks', None)
@@ -708,9 +706,9 @@ def _convert_profile_data_to_core_format(profile_memory: ProfileMemory) -> CoreM
                     }
                     projects_participated.append(project_dict)
                 elif isinstance(project, dict):
-                    projects_participated.append(project)  # 已经是正确格式
+                    projects_participated.append(project)  # Already in correct format
 
-    # 提取新增字段
+    # Extract additional fields
     user_goal = getattr(profile_memory, 'user_goal', None)
     work_responsibility = getattr(profile_memory, 'work_responsibility', None)
     working_habit_preference = getattr(profile_memory, 'working_habit_preference', None)
@@ -749,33 +747,33 @@ def _convert_memcell_to_document(
     memcell: MemCell, current_time: Optional[datetime] = None
 ) -> DocMemCell:
     """
-    将业务层MemCell转换为文档模型MemCell
+    Convert business layer MemCell to document model MemCell.
 
-    使用场景：
-    - 保存MemCell到MemCellRawRepository之前的格式转换
-    - 处理原始数据的嵌套结构转换，避免无限递归问题
-    - 统一时间戳格式和数据类型枚举的转换
+    Use cases:
+    - Format conversion before saving MemCell to MemCellRawRepository
+    - Handle nested structure conversion of raw data to avoid infinite recursion
+    - Unify timestamp format and data type enum conversion
 
     Args:
-        memcell: 业务层的MemCell对象
-        current_time: 当前时间，用于时间戳转换失败时的备用值
+        memcell: Business layer MemCell object
+        current_time: Current time, used as fallback when timestamp conversion fails
 
     Returns:
-        DocMemCell: 数据库文档格式的MemCell对象
+        DocMemCell: MemCell object in database document format
 
     Raises:
-        Exception: 当转换过程中发生错误时抛出异常
+        Exception: Thrown when an error occurs during conversion
     """
     try:
-        # 临时解决方案：禁用原始数据转换以避免无限递归
-        # 问题：BaseModel对象的嵌套验证导致无限递归，即使最简单的结构也有问题
-        # TODO: 需要找到更好的解决方案来正确转换original_data
+        # Temporary solution: disable raw data conversion to avoid infinite recursion
+        # Issue: Nested validation of BaseModel objects causes infinite recursion, even with simplest structures
+        # TODO: Need to find a better solution to properly convert original_data
         doc_original_data = []
         if memcell.type == RawDataType.CONVERSATION:
             for raw_data_dict in memcell.original_data:
-                # 实际的数据结构是: {'speaker_id': 'user_1', 'speaker_name': 'Alice', 'content': '消息内容', 'timestamp': '...'}
-                # 这里的 content 是直接的消息字符串，不是嵌套字典
-                # 辅助函数：将各种类型转换为字符串
+                # Actual data structure is: {'speaker_id': 'user_1', 'speaker_name': 'Alice', 'content': 'message content', 'timestamp': '...'}
+                # Here content is the direct message string, not a nested dict
+                # Helper function: convert various types to string
                 def to_string(value):
                     if value is None:
                         return ''
@@ -821,53 +819,53 @@ def _convert_memcell_to_document(
                     },
                 }
 
-                # 创建文档模型的 RawData
+                # Create document model RawData
                 doc_raw_data = DocRawData(
-                    data_type=DataTypeEnum.CONVERSATION,  # 默认设为对话类型
-                    messages=[message],  # 消息列表
-                    # meta=raw_data_dict.get('metadata', {})  # 元数据
+                    data_type=DataTypeEnum.CONVERSATION,  # Default to conversation type
+                    messages=[message],  # Message list
+                    # meta=raw_data_dict.get('metadata', {})  # Metadata
                 )
                 doc_original_data.append(doc_raw_data)
 
-        # 转换时间戳为timezone-aware的datetime，避免无限递归
+        # Convert timestamp to timezone-aware datetime to avoid infinite recursion
         if current_time is None:
             current_time = get_now_with_timezone()
         timestamp_dt = current_time
         if memcell.timestamp:
             try:
-                # 检查 timestamp 类型并处理
-                # TODO: 重构专项：timestamp 应保持为datetime 不该做判断
+                # Check timestamp type and process
+                # TODO: Refactoring: timestamp should remain as datetime, no type checking needed
                 if isinstance(memcell.timestamp, datetime):
-                    # 如果已经是 datetime 对象，直接使用
+                    # If already datetime object, use directly
                     timestamp_dt = _normalize_datetime_for_storage(memcell.timestamp)
                 else:
-                    # 如果是数值时间戳，需要转换（假设是秒级时间戳）
+                    # If numeric timestamp, need to convert (assuming seconds timestamp)
                     timestamp_dt = _normalize_datetime_for_storage(
                         memcell.timestamp * 1000
                     )
             except (ValueError, TypeError) as e:
-                logger.debug(f"时间戳转换失败，使用当前时间: {e}")
+                logger.debug(f"Timestamp conversion failed, using current time: {e}")
 
-        logger.debug(f"MemCell保存时间戳: {timestamp_dt}")
+        logger.debug(f"MemCell save timestamp: {timestamp_dt}")
 
-        # 转换数据类型枚举
+        # Convert data type enum
         doc_type = None
         if memcell.type:
             try:
-                # 将RawDataType转换为DataTypeEnum
+                # Convert RawDataType to DataTypeEnum
                 if memcell.type == RawDataType.CONVERSATION:
                     doc_type = DataTypeEnum.CONVERSATION
             except Exception as e:
-                logger.warning(f"数据类型转换失败: {e}")
+                logger.warning(f"Data type conversion failed: {e}")
 
-        # MemCell 本身就是群组记忆，user_id 始终为 None
+        # MemCell itself is group memory, user_id is always None
         primary_user_id = None
 
-        # 准备扩展字段 - 根据MemCell的具体类型提取扩展属性
+        # Prepare extension fields - extract extension properties based on specific MemCell type
         email_fields = {}
         linkdoc_fields = {}
 
-        # 准备 foresight_memories（转为字典列表）
+        # Prepare foresight_memories (convert to dict list)
         foresight_memories_list = None
         if hasattr(memcell, 'foresight_memories') and memcell.foresight_memories:
             foresight_memories_list = [
@@ -882,7 +880,7 @@ def _convert_memcell_to_document(
                 sm for sm in foresight_memories_list if sm is not None
             ]
 
-        # 准备 event_log（转为字典）
+        # Prepare event_log (convert to dict)
         event_log_dict = None
         if hasattr(memcell, 'event_log') and memcell.event_log:
             if hasattr(memcell.event_log, 'to_dict'):
@@ -890,21 +888,21 @@ def _convert_memcell_to_document(
             elif isinstance(memcell.event_log, dict):
                 event_log_dict = memcell.event_log
 
-        # 准备 extend 字段（包含 embedding 等扩展信息）
+        # Prepare extend field (contains embedding and other extension info)
         extend_dict = {}
         if hasattr(memcell, 'extend') and memcell.extend:
             extend_dict = memcell.extend if isinstance(memcell.extend, dict) else {}
 
-        # 添加 embedding 到 extend（如果有）
+        # Add embedding to extend (if exists)
         if hasattr(memcell, 'embedding') and memcell.embedding:
             extend_dict['embedding'] = memcell.embedding
 
-        # 创建文档模型 - 直接传入timezone-aware的datetime对象而不是字符串
-        # 这样可以避免基类的datetime验证器触发无限递归
+        # Create document model - pass timezone-aware datetime object directly instead of string
+        # This avoids infinite recursion triggered by base class datetime validator
         doc_memcell = DocMemCell(
             event_id=memcell.event_id,
             user_id=primary_user_id,
-            timestamp=timestamp_dt,  # 直接传入timezone-aware的datetime
+            timestamp=timestamp_dt,  # Pass timezone-aware datetime directly
             summary=memcell.summary,
             group_id=memcell.group_id,
             group_name=memcell.group_name,
@@ -915,12 +913,12 @@ def _convert_memcell_to_document(
             keywords=memcell.keywords,
             linked_entities=memcell.linked_entities,
             episode=memcell.episode,
-            foresight_memories=foresight_memories_list,  # ✅ 添加前瞻
-            event_log=event_log_dict,  # ✅ 添加事件日志
+            foresight_memories=foresight_memories_list,  # ✅ Add foresight
+            event_log=event_log_dict,  # ✅ Add event log
             extend=(
                 extend_dict if extend_dict else None
-            ),  # ✅ 添加 extend（包含 embedding）
-            # EmailMemCell 扩展字段
+            ),  # ✅ Add extend (contains embedding)
+            # EmailMemCell extension fields
             clips=email_fields.get("clips") or linkdoc_fields.get("clips"),
             email_address=email_fields.get("email_address"),
             thread_id=email_fields.get("thread_id"),
@@ -928,7 +926,7 @@ def _convert_memcell_to_document(
             importance=email_fields.get("importance"),
             body_type=email_fields.get("body_type"),
             email_type=email_fields.get("email_type"),
-            # LinkDocMemCell 扩展字段
+            # LinkDocMemCell extension fields
             file_name=linkdoc_fields.get("file_name"),
             file_type=linkdoc_fields.get("file_type"),
             source_type=linkdoc_fields.get("source_type"),
@@ -942,14 +940,14 @@ def _convert_memcell_to_document(
         return doc_memcell
 
     except Exception as e:
-        logger.error(f"MemCell转换失败: {e}")
+        logger.error(f"MemCell conversion failed: {e}")
         import traceback
 
         traceback.print_exc()
         raise
 
 
-# ==================== 数据库操作函数 ====================
+# ==================== Database Operation Functions ====================
 from core.observation.tracing.decorators import trace_logger
 
 
@@ -957,42 +955,46 @@ async def _save_memcell_to_database(
     memcell: MemCell, current_time: datetime
 ) -> MemCell:
     """
-    将MemCell保存到数据库
+    Save MemCell to database.
 
-    使用场景：
-    - memorize流程中成功提取MemCell后的持久化操作
-    - 确保对话片段的记忆单元得到保存
-    - 为后续的记忆提取提供数据基础
+    Use cases:
+    - Persistence operation after successfully extracting MemCell in memorize flow
+    - Ensure conversation segment memory units are saved
+    - Provide data foundation for subsequent memory extraction
 
     Args:
-        memcell: 业务层的MemCell对象
+        memcell: Business layer MemCell object
 
     Note:
-        - 函数内部会自动进行格式转换
-        - 转换失败时会跳过保存并记录日志
-        - 保存失败时会打印错误信息但不中断流程
+        - Function internally performs automatic format conversion
+        - Skips saving and logs when conversion fails
+        - Prints error message but does not interrupt flow when save fails
     """
     try:
-        # 初始化MemCell Repository
+        # Initialize MemCell Repository
         memcell_repo = get_bean_by_type(MemCellRawRepository)
-        # 将业务层MemCell转换为文档模型
+        # Convert business layer MemCell to document model
         doc_memcell = _convert_memcell_to_document(memcell, current_time)
 
-        # 检查转换是否成功
+        # Check if conversion was successful
         if doc_memcell is None:
-            logger.warning(f"MemCell转换跳过，无法保存: {memcell.event_id}")
+            logger.warning(
+                f"MemCell conversion skipped, cannot save: {memcell.event_id}"
+            )
             return
 
-        # 保存到数据库
+        # Save to database
         result = await memcell_repo.append_memcell(doc_memcell)
         if result:
             memcell.event_id = str(result.event_id)
-            logger.info(f"[mem_db_operations] MemCell保存成功: {memcell.event_id}")
+            logger.info(
+                f"[mem_db_operations] MemCell saved successfully: {memcell.event_id}"
+            )
         else:
-            logger.info(f"[mem_db_operations] MemCell保存失败: {memcell.event_id}")
+            logger.info(f"[mem_db_operations] MemCell save failed: {memcell.event_id}")
 
     except Exception as e:
-        logger.error(f"MemCell保存失败: {e}")
+        logger.error(f"MemCell save failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1005,22 +1007,22 @@ async def _save_group_profile_memory(
     version: Optional[str] = None,
 ) -> None:
     """
-    将GroupProfileMemory保存到GroupProfileRawRepository
+    Save GroupProfileMemory to GroupProfileRawRepository.
     """
     try:
-        # 转换数据格式
+        # Convert data format
         converted_data = _convert_group_profile_data_to_profile_format(
             group_profile_memory
         )
 
-        # 全覆盖保存GroupProfile（创建或更新）
-        logger.debug(f"保存GroupProfile: {group_profile_memory.group_id}")
+        # Full overwrite save GroupProfile (create or update)
+        logger.debug(f"Save GroupProfile: {group_profile_memory.group_id}")
 
-        # 准备保存数据（分离timestamp，因为upsert_by_group_id需要单独传递）
+        # Prepare save data (separate timestamp, as upsert_by_group_id needs it passed separately)
         save_data = {}
         timestamp = None
 
-        # 添加非空字段，但分离timestamp
+        # Add non-null fields, but separate timestamp
         for k, v in converted_data.items():
             if v is not None:
                 if k == "timestamp":
@@ -1030,13 +1032,13 @@ async def _save_group_profile_memory(
 
         save_data["version"] = version
 
-        # 使用upsert_by_group_id方法（如果存在则更新，不存在则创建）
+        # Use upsert_by_group_id method (update if exists, create if not)
         await group_profile_raw_repo.upsert_by_group_id(
             group_profile_memory.group_id, save_data, timestamp=timestamp
         )
 
     except Exception as e:
-        logger.error(f"GroupProfileMemory保存失败: {e}")
+        logger.error(f"GroupProfileMemory save failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1048,45 +1050,45 @@ async def _save_profile_memory_to_core(
     version: Optional[str] = None,
 ) -> None:
     """
-    将ProfileMemory保存到CoreMemoryRawRepository
+    Save ProfileMemory to CoreMemoryRawRepository.
 
-    使用场景：
-    - memorize流程中提取的用户档案记忆需要持久化时
-    - 全覆盖更新用户的核心记忆信息
-    - 处理技能、性格、项目等用户特征信息的存储
+    Use cases:
+    - When user profile memory extracted in memorize flow needs persistence
+    - Full overwrite update of user's core memory information
+    - Handle storage of user characteristic information like skills, personality, projects
 
     Args:
-        profile_memory: 业务层的ProfileMemory对象
-        core_memory_repo: CoreMemoryRawRepository实例
+        profile_memory: Business layer ProfileMemory object
+        core_memory_repo: CoreMemoryRawRepository instance
 
     Note:
-        - 采用全覆盖策略，直接用新数据替换现有数据
-        - 不进行数据合并，确保数据的一致性和准确性
+        - Uses full overwrite strategy, directly replacing existing data with new data
+        - Does not perform data merge, ensuring data consistency and accuracy
 
     Raises:
-        Exception: 当保存过程中发生错误时抛出异常
+        Exception: Thrown when an error occurs during save
     """
     try:
-        # 转换数据格式
+        # Convert data format
         converted_data = _convert_profile_data_to_core_format(profile_memory)
 
-        # 全覆盖保存CoreMemory（创建或更新）
-        logger.debug(f"保存CoreMemory: {profile_memory.user_id}")
+        # Full overwrite save CoreMemory (create or update)
+        logger.debug(f"Save CoreMemory: {profile_memory.user_id}")
 
-        # 准备保存数据（不包含user_id，因为upsert_by_user_id会自动处理）
+        # Prepare save data (does not include user_id, as upsert_by_user_id handles it automatically)
         save_data = {"extend": getattr(profile_memory, 'extend', None)}
-        # 添加非空字段
+        # Add non-null fields
         for k, v in converted_data.items():
             if v is not None:
                 save_data[k] = v
 
         save_data["version"] = version
 
-        # 使用upsert_by_user_id方法（如果存在则更新，不存在则创建）
+        # Use upsert_by_user_id method (update if exists, create if not)
         await core_memory_repo.upsert_by_user_id(profile_memory.user_id, save_data)
 
     except Exception as e:
-        logger.error(f"保存Profile Memory到CoreMemory失败: {e}")
+        logger.error(f"Save Profile Memory to CoreMemory failed: {e}")
         import traceback
 
         traceback.print_exc()
@@ -1099,75 +1101,75 @@ async def _save_profile_memory_to_group_user_profile_memory(
     version: Optional[str] = None,
 ) -> None:
     """
-    将ProfileMemory保存到CoreMemoryRawRepository
+    Save ProfileMemory to GroupUserProfileMemoryRawRepository.
 
-    使用场景：
-    - memorize流程中提取的用户档案记忆需要持久化时
-    - 全覆盖更新用户的核心记忆信息
-    - 处理技能、性格、项目等用户特征信息的存储
+    Use cases:
+    - When user profile memory extracted in memorize flow needs persistence
+    - Full overwrite update of user's core memory information
+    - Handle storage of user characteristic information like skills, personality, projects
 
     Args:
-        profile_memory: 业务层的ProfileMemory对象
-        core_memory_repo: CoreMemoryRawRepository实例
+        profile_memory: Business layer ProfileMemory object
+        group_user_profile_memory_repo: GroupUserProfileMemoryRawRepository instance
 
     Note:
-        - 采用全覆盖策略，直接用新数据替换现有数据
-        - 不进行数据合并，确保数据的一致性和准确性
+        - Uses full overwrite strategy, directly replacing existing data with new data
+        - Does not perform data merge, ensuring data consistency and accuracy
 
     Raises:
-        Exception: 当保存过程中发生错误时抛出异常
+        Exception: Thrown when an error occurs during save
     """
     try:
-        # 转换数据格式
+        # Convert data format
         converted_data = _convert_profile_data_to_core_format(profile_memory)
 
-        # 全覆盖保存CoreMemory（创建或更新）
-        logger.debug(f"保存CoreMemory: {profile_memory.user_id}")
+        # Full overwrite save CoreMemory (create or update)
+        logger.debug(f"Save CoreMemory: {profile_memory.user_id}")
 
-        # 准备保存数据（不包含user_id，因为upsert_by_user_id会自动处理）
+        # Prepare save data (does not include user_id, as upsert_by_user_id handles it automatically)
         save_data = {"extend": getattr(profile_memory, 'extend', None)}
-        # 添加非空字段
+        # Add non-null fields
         for k, v in converted_data.items():
             if v is not None:
                 save_data[k] = v
 
         save_data["version"] = version
 
-        # 使用upsert_by_user_id方法（如果存在则更新，不存在则创建）
+        # Use upsert_by_user_group method (update if exists, create if not)
         await group_user_profile_memory_repo.upsert_by_user_group(
             profile_memory.user_id, profile_memory.group_id, save_data
         )
 
     except Exception as e:
-        logger.error(f"保存Profile Memory到CoreMemory失败: {e}")
+        logger.error(f"Save Profile Memory to GroupUserProfileMemory failed: {e}")
         import traceback
 
         traceback.print_exc()
         raise
 
 
-# ==================== 状态表操作函数 ====================
+# ==================== Status Table Operation Functions ====================
 
 
 @dataclass
 class ConversationStatus:
     """
-    对话状态表数据结构
+    Conversation status table data structure.
 
-    用于跟踪对话的处理状态和时间边界，确保消息处理的连续性和一致性
+    Used to track conversation processing status and time boundaries, ensuring continuity and consistency of message processing.
 
-    使用场景：
-    - 管理对话的生命周期状态
-    - 记录已处理和待处理消息的时间边界
-    - 支持对话的暂停、继续和完成状态管理
+    Use cases:
+    - Manage conversation lifecycle status
+    - Record time boundaries of processed and pending messages
+    - Support pause, continue and completion status management for conversations
     """
 
-    group_id: str  # 群组ID
-    old_msg_start_time: Optional[str]  # 已处理消息的开始时间
-    new_msg_start_time: Optional[str]  # 新消息的开始时间
-    last_memcell_time: Optional[str]  # 最后提取MemCell的时间
-    created_at: str  # 创建时间
-    updated_at: str  # 更新时间
+    group_id: str  # Group ID
+    old_msg_start_time: Optional[str]  # Start time of processed messages
+    new_msg_start_time: Optional[str]  # Start time of new messages
+    last_memcell_time: Optional[str]  # Time of last MemCell extraction
+    created_at: str  # Creation time
+    updated_at: str  # Update time
 
 
 async def _update_status_for_new_conversation(
@@ -1177,24 +1179,24 @@ async def _update_status_for_new_conversation(
     current_time: datetime,
 ) -> bool:
     """
-    为新对话创建状态记录
+    Create status record for new conversation.
 
-    使用场景：
-    - 当检测到群组的第一次对话时调用
-    - 初始化对话状态管理的基础数据
-    - 设置消息处理的时间边界起点
+    Use cases:
+    - Called when first conversation of a group is detected
+    - Initialize basic data for conversation status management
+    - Set starting point of message processing time boundary
 
     Args:
-        status_repo: ConversationStatusRawRepository实例
-        request: memorize请求对象
-        earliest_time: 最早消息的时间戳
-        current_time: 当前时间
+        status_repo: ConversationStatusRawRepository instance
+        request: Memorize request object
+        earliest_time: Timestamp of earliest message
+        current_time: Current time
 
     Returns:
-        bool: 创建成功返回True，失败返回False
+        bool: Returns True if creation successful, False otherwise
     """
     try:
-        # 转换为数据库格式并保存
+        # Convert to database format and save
         # earliest_time
         update_data = {
             "old_msg_start_time": None,
@@ -1204,18 +1206,20 @@ async def _update_status_for_new_conversation(
             "updated_at": current_time,
         }
 
-        logger.debug(f"创建新状态记录: {update_data}")
+        logger.debug(f"Create new status record: {update_data}")
         result = await status_repo.upsert_by_group_id(request.group_id, update_data)
 
         if result:
-            logger.info(f"新对话状态创建成功: {result.conversation_id}")
+            logger.info(
+                f"New conversation status created successfully: {result.conversation_id}"
+            )
             return True
         else:
-            logger.warning(f"新对话状态创建失败")
+            logger.warning(f"New conversation status creation failed")
             return False
 
     except Exception as e:
-        logger.error(f"创建新对话状态失败: {e}")
+        logger.error(f"Failed to create new conversation status: {e}")
         return False
 
 
@@ -1226,30 +1230,30 @@ async def _update_status_for_continuing_conversation(
     current_time: datetime,
 ) -> bool:
     """
-    为继续的对话更新状态记录（更新new_msg_start_time）
+    Update status record for continuing conversation (update new_msg_start_time).
 
-    使用场景：
-    - 当MemCell提取判断为非边界时调用
-    - 对话仍在继续，需要累积更多消息
-    - 更新new_msg_start_time为最新消息时间，为下次处理做准备
+    Use cases:
+    - Called when MemCell extraction is judged as non-boundary
+    - Conversation is still continuing, need to accumulate more messages
+    - Update new_msg_start_time to latest message time to prepare for next processing
 
     Args:
-        status_repo: ConversationStatusRawRepository实例
-        request: memorize请求对象
-        latest_time: 最新消息的时间戳
-        current_time: 当前时间
+        status_repo: ConversationStatusRawRepository instance
+        request: Memorize request object
+        latest_time: Timestamp of latest message
+        current_time: Current time
 
     Returns:
-        bool: 更新成功返回True，失败返回False
+        bool: Returns True if update successful, False otherwise
     """
     try:
-        # 先获取现有状态
+        # First get existing status
         existing_status = await status_repo.get_by_group_id(request.group_id)
         if not existing_status:
             logger.info(
-                f"未找到现有状态，创建新的状态记录: group_id={request.group_id}"
+                f"Existing status not found, creating new status record: group_id={request.group_id}"
             )
-            # 创建新状态记录
+            # Create new status record
             latest_dt = _normalize_datetime_for_storage(latest_time)
             update_data = {
                 "old_msg_start_time": None,
@@ -1260,13 +1264,17 @@ async def _update_status_for_continuing_conversation(
             }
             result = await status_repo.upsert_by_group_id(request.group_id, update_data)
             if result:
-                logger.info(f"创建新状态成功: group_id={request.group_id}")
+                logger.info(
+                    f"New status created successfully: group_id={request.group_id}"
+                )
                 return True
             else:
-                logger.warning(f"创建新状态失败: group_id={request.group_id}")
+                logger.warning(
+                    f"Failed to create new status: group_id={request.group_id}"
+                )
                 return False
 
-        # 更新new_msg_start_time为最新消息时间+1毫秒
+        # Update new_msg_start_time to latest message time + 1 millisecond
         latest_dt = _normalize_datetime_for_storage(latest_time)
         new_msg_start_time = latest_dt
 
@@ -1286,18 +1294,18 @@ async def _update_status_for_continuing_conversation(
             "updated_at": current_time,
         }
 
-        logger.debug(f"对话延续，更新new_msg_start_time")
+        logger.debug(f"Conversation continuing, update new_msg_start_time")
         result = await status_repo.upsert_by_group_id(request.group_id, update_data)
 
         if result:
-            logger.info(f"对话延续状态更新成功")
+            logger.info(f"Conversation continuation status updated successfully")
             return True
         else:
-            logger.warning(f"对话延续状态更新失败")
+            logger.warning(f"Conversation continuation status update failed")
             return False
 
     except Exception as e:
-        logger.error(f"对话延续状态更新失败: {e}")
+        logger.error(f"Conversation continuation status update failed: {e}")
         return False
 
 
@@ -1308,29 +1316,29 @@ async def _update_status_after_memcell_extraction(
     current_time: datetime,
 ) -> bool:
     """
-    MemCell提取后更新状态表（更新old_msg_start_time和new_msg_start_time）
+    Update status table after MemCell extraction (update old_msg_start_time and new_msg_start_time).
 
-    使用场景：
-    - 当成功提取MemCell并完成记忆提取后调用
-    - 更新已处理消息的时间边界，避免重复处理
-    - 重置new_msg_start_time为当前时间，准备接收新消息
+    Use cases:
+    - Called after successfully extracting MemCell and completing memory extraction
+    - Update processed message time boundary to avoid duplicate processing
+    - Reset new_msg_start_time to current time to prepare for receiving new messages
 
     Args:
-        status_repo: ConversationStatusRawRepository实例
-        request: memorize请求对象
-        memcell_time: MemCell的时间戳
-        current_time: 当前时间
+        status_repo: ConversationStatusRawRepository instance
+        request: Memorize request object
+        memcell_time: Timestamp of MemCell
+        current_time: Current time
 
     Returns:
-        bool: 更新成功返回True，失败返回False
+        bool: Returns True if update successful, False otherwise
 
     Note:
-        - old_msg_start_time更新为最后一个历史消息时间+1ms
-        - new_msg_start_time重置为当前时间
-        - last_memcell_time记录最新的MemCell提取时间
+        - old_msg_start_time is updated to last history message time + 1ms
+        - new_msg_start_time is reset to current time
+        - last_memcell_time records the latest MemCell extraction time
     """
     try:
-        # 获取最后一个历史数据的时间戳
+        # Get timestamp of last history data
         last_history_time = None
         if request.history_raw_data_list and request.history_raw_data_list[-1]:
             last_history_data = request.history_raw_data_list[-1]
@@ -1367,7 +1375,7 @@ async def _update_status_after_memcell_extraction(
         else:
             new_msg_start_time = _normalize_datetime_for_storage(current_time)
 
-        # 计算old_msg_start_time（最后一个历史时间戳+1毫秒）
+        # Calculate old_msg_start_time (last history timestamp + 1 millisecond)
         if first_new_time:
             first_new_dt = _normalize_datetime_for_storage(first_new_time)
             old_msg_start_time = first_new_dt
@@ -1375,54 +1383,54 @@ async def _update_status_after_memcell_extraction(
             last_history_dt = _normalize_datetime_for_storage(last_history_time)
             old_msg_start_time = last_history_dt + timedelta(milliseconds=1)
         else:
-            # 如果没有历史数据，使用现有的current_time
+            # If no history data, use existing current_time
             old_msg_start_time = _normalize_datetime_for_storage(current_time)
 
         update_data = {
             "old_msg_start_time": old_msg_start_time,
-            "new_msg_start_time": new_msg_start_time,  # 当前时间
+            "new_msg_start_time": new_msg_start_time,  # Current time
             "last_memcell_time": _normalize_datetime_for_storage(memcell_time),
             "updated_at": current_time,
         }
 
         # TODO : clear queue
 
-        logger.debug(f"MemCell提取后更新状态表")
+        logger.debug(f"Update status table after MemCell extraction")
         result = await status_repo.upsert_by_group_id(request.group_id, update_data)
 
         if result:
-            logger.info(f"MemCell提取后状态更新成功")
+            logger.info(f"Status update after MemCell extraction successful")
             return True
         else:
-            logger.warning(f"MemCell提取后状态更新失败")
+            logger.warning(f"Status update after MemCell extraction failed")
             return False
 
     except Exception as e:
-        logger.error(f"MemCell提取后状态更新失败: {e}")
+        logger.error(f"Status update after MemCell extraction failed: {e}")
         return False
 
 
-# ==================== 数据格式转换函数 ====================
+# ==================== Data Format Conversion Functions ====================
 
 
 def _convert_original_data_for_profile_extractor(doc_memcell) -> List[Dict[str, Any]]:
     """
-    将文档层MemCell的original_data转换为ProfileMemoryExtractor期望的格式
+    Convert document layer MemCell's original_data to the format expected by ProfileMemoryExtractor.
 
-    使用场景：
-    - 在memorize_offline流程中，将文档层MemCell转换为业务层MemCell时使用
-    - 确保ProfileMemoryExtractor能正确解析对话数据
+    Use cases:
+    - Used when converting document layer MemCell to business layer MemCell in memorize_offline flow
+    - Ensure ProfileMemoryExtractor can correctly parse conversation data
 
     Args:
-        doc_memcell: 文档层的MemCell对象
+        doc_memcell: Document layer MemCell object
 
     Returns:
-        List[Dict[str, Any]]: ProfileMemoryExtractor期望的数据格式，包含：
-        - speaker_name: 说话人姓名
-        - speaker_id: 说话人ID
-        - content: 消息内容
-        - referList: 引用列表
-        - timestamp: 时间戳
+        List[Dict[str, Any]]: Data format expected by ProfileMemoryExtractor, containing:
+        - speaker_name: Speaker name
+        - speaker_id: Speaker ID
+        - content: Message content
+        - referList: Reference list
+        - timestamp: Timestamp
     """
     original_data_list = []
     if hasattr(doc_memcell, 'original_data') and doc_memcell.original_data:
@@ -1430,7 +1438,7 @@ def _convert_original_data_for_profile_extractor(doc_memcell) -> List[Dict[str, 
             if hasattr(raw_data, 'messages') and raw_data.messages:
                 for message in raw_data.messages:
                     if hasattr(message, 'content') and message.content:
-                        # 构建ProfileMemoryExtractor期望的数据结构
+                        # Build data structure expected by ProfileMemoryExtractor
                         extend = getattr(message, 'extend', {}) or {}
                         message_data = {
                             "speaker_name": extend.get(
@@ -1452,33 +1460,35 @@ def _convert_group_profile_raw_to_memory_format(
     doc_group_profile_raw,
 ) -> Dict[str, Any]:
     """
-    将数据库中的GroupProfile原始数据转换为GroupProfileMemory所需的格式
+    Convert raw GroupProfile data from database to the format required by GroupProfileMemory.
 
     Args:
-        doc_group_profile_raw: 数据库中的GroupProfile原始文档
+        doc_group_profile_raw: Raw GroupProfile document from database
 
     Returns:
-        Dict[str, Any]: 转换后的数据字典
+        Dict[str, Any]: Converted data dictionary
     """
     from memory_layer.memory_extractor.group_profile_memory_extractor import TopicInfo
     from datetime import datetime
 
-    # 安全地转换topics字段
+    # Safely convert topics field
     topics = None
     if hasattr(doc_group_profile_raw, 'topics') and doc_group_profile_raw.topics:
         topics = []
         for topic_data in doc_group_profile_raw.topics:
             if isinstance(topic_data, dict):
-                # 从字典创建TopicInfo对象
+                # Create TopicInfo object from dict
                 try:
                     topic = TopicInfo(**topic_data)
                     topics.append(topic)
                 except Exception as e:
-                    # 如果转换失败，跳过这个topic
-                    logger.warning(f"转换topic失败: {e}, topic_data: {topic_data}")
+                    # If conversion fails, skip this topic
+                    logger.warning(
+                        f"Topic conversion failed: {e}, topic_data: {topic_data}"
+                    )
                     continue
             elif hasattr(topic_data, '__dict__'):
-                # 如果是对象，转换为TopicInfo
+                # If it's an object, convert to TopicInfo
                 try:
                     topic_dict = (
                         topic_data.__dict__ if hasattr(topic_data, '__dict__') else {}
@@ -1486,10 +1496,10 @@ def _convert_group_profile_raw_to_memory_format(
                     topic = TopicInfo(**topic_dict)
                     topics.append(topic)
                 except Exception as e:
-                    logger.warning(f"转换topic对象失败: {e}")
+                    logger.warning(f"Topic object conversion failed: {e}")
                     continue
 
-    # 安全地转换roles字段：从 RoleAssignment 对象转换为 dict
+    # Safely convert roles field: from RoleAssignment objects to dict
     roles = None
     if hasattr(doc_group_profile_raw, 'roles') and doc_group_profile_raw.roles:
         roles = {}
@@ -1498,7 +1508,7 @@ def _convert_group_profile_raw_to_memory_format(
                 role_list = []
                 for assignment in assignments:
                     if hasattr(assignment, 'user_id'):
-                        # RoleAssignment 对象，转换为 dict
+                        # RoleAssignment object, convert to dict
                         role_dict = {
                             'user_id': assignment.user_id,
                             'user_name': assignment.user_name,
@@ -1507,12 +1517,12 @@ def _convert_group_profile_raw_to_memory_format(
                         }
                         role_list.append(role_dict)
                     elif isinstance(assignment, dict):
-                        # 已经是 dict，直接使用
+                        # Already a dict, use directly
                         role_list.append(assignment)
                 if role_list:
                     roles[role_name] = role_list
         else:
-            # 如果不是字典，尝试转换
+            # If not a dict, try to convert
             try:
                 roles = (
                     dict(doc_group_profile_raw.roles)
@@ -1520,16 +1530,16 @@ def _convert_group_profile_raw_to_memory_format(
                     else {}
                 )
             except Exception as e:
-                logger.warning(f"转换roles失败: {e}")
+                logger.warning(f"Roles conversion failed: {e}")
                 roles = {}
 
-    # 安全地转换extend字段
+    # Safely convert extend field
     extend = None
     if hasattr(doc_group_profile_raw, 'extend') and doc_group_profile_raw.extend:
         if isinstance(doc_group_profile_raw.extend, dict):
             extend = doc_group_profile_raw.extend
         else:
-            # 如果不是字典，尝试转换
+            # If not a dict, try to convert
             try:
                 extend = (
                     dict(doc_group_profile_raw.extend)
@@ -1537,21 +1547,21 @@ def _convert_group_profile_raw_to_memory_format(
                     else {}
                 )
             except Exception as e:
-                logger.warning(f"转换extend失败: {e}")
+                logger.warning(f"Extend conversion failed: {e}")
                 extend = {}
 
-    # 安全地转换timestamp字段：从datetime转换为整数毫秒时间戳
+    # Safely convert timestamp field: from datetime to integer milliseconds timestamp
     timestamp = None
     if hasattr(doc_group_profile_raw, 'timestamp') and doc_group_profile_raw.timestamp:
         if isinstance(doc_group_profile_raw.timestamp, datetime):
-            # 将datetime转换为毫秒时间戳
+            # Convert datetime to milliseconds timestamp
             timestamp = int(doc_group_profile_raw.timestamp.timestamp() * 1000)
         elif isinstance(doc_group_profile_raw.timestamp, (int, float)):
-            # 如果已经是数值，确保是整数
+            # If already a number, ensure it's an integer
             timestamp = int(doc_group_profile_raw.timestamp)
         else:
             logger.warning(
-                f"无法转换timestamp: {type(doc_group_profile_raw.timestamp)}"
+                f"Cannot convert timestamp: {type(doc_group_profile_raw.timestamp)}"
             )
 
     return {'topics': topics, 'roles': roles, 'extend': extend, 'timestamp': timestamp}
