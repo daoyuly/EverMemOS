@@ -21,7 +21,7 @@ from typing import List, Dict, Any
 from datetime import datetime
 import time
 
-
+# TODO remove language judgement
 def get_prompt_language() -> str:
     """Get Current Prompt Language Setting"""
     return os.getenv("MEMORY_LANGUAGE", "en")
