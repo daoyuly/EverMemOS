@@ -680,8 +680,8 @@ async def _save_episodes(
     saved_docs = saved_map.get(MemoryType.EPISODIC_MEMORY, [])
 
     for ep, saved_doc in zip(episodic_source, saved_docs):
-        ep.event_id = str(saved_doc.event_id)
-        state.parent_docs_map[str(saved_doc.event_id)] = saved_doc
+        ep.id = str(saved_doc.id)
+        state.parent_docs_map[str(saved_doc.id)] = saved_doc
 
 
 async def _extract_foresight_and_eventlog(
@@ -698,7 +698,7 @@ async def _extract_foresight_and_eventlog(
     metadata = []
 
     for ep in episodic_source:
-        if not ep.event_id:
+        if not ep.id:
             continue
         tasks.append(
             memory_manager.extract_memory(
