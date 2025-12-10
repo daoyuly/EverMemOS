@@ -382,7 +382,6 @@ memsys_enterprise/src/memsys_enterprise/
 
 ## 相关文档
 
-- [扩展开发指南](../../../docs/dev_docs/addon_development_guide.md) - 如何开发和使用 addons
 - [依赖注入系统](../di/introduction.md) - DI 容器的使用和原理
 - [异步任务系统](../asynctasks/introduction.md) - 后台任务的注册和调度
 - [开发指南](../../../docs/dev_docs/development_guide.md) - 整体开发规范和流程
