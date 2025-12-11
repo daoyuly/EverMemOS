@@ -290,7 +290,7 @@ async def start_mock_llm(port: int = 9001) -> Optional["web.AppRunner"]:
         prompt = data.get("messages", [{}])[0].get("content", "")
 
         # Return different responses based on prompt content
-        if "改进查询" in prompt or "Refine query" in prompt:
+        if "改进查询" in prompt or "Refine query" in prompt:  # skip-i18n-check
             # Multi-query generation
             content = json.dumps(
                 {

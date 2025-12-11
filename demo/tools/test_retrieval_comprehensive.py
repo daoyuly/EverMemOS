@@ -25,7 +25,7 @@ from common_utils.language_utils import get_prompt_language
 def get_test_query() -> str:
     """Get test query based on current language setting"""
     lang = get_prompt_language()
-    return "运动" if lang == "zh" else "Sports"
+    return "运动" if lang == "zh" else "Sports"  # skip-i18n-check
 
 
 class RetrievalTester:
